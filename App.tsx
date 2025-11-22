@@ -39,7 +39,7 @@ const initialMatchState: MatchState = {
     opponent: { address: '', username: 'Opponent', score: 0, isLocal: false },
   },
   turn: 'local',
-  timeLeft: 60,
+  timeLeft: 600,
   winner: null,
 };
 

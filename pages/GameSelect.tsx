@@ -22,7 +22,7 @@ export default function GameSelect() {
     {
       id: GameType.CHESS,
       title: '3D Chess Blitz',
-      desc: '1 min timer. Checkmate or material advantage.',
+      desc: '10 min timer. Checkmate or material advantage.',
       color: 'from-blue-500 to-indigo-500',
       icon: '♟️'
     },
