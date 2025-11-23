@@ -51,11 +51,11 @@ const App: React.FC = () => {
     const address = await contractService.connectWallet();
     setWallet(address);
     setMatchState(prev => ({
-        ...prev,
-        players: {
-            ...prev.players,
-            local: { ...prev.players.local, address }
-        }
+      ...prev,
+      players: {
+        ...prev.players,
+        local: { ...prev.players.local, address }
+      }
     }));
   };
 
