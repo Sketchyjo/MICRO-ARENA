@@ -17,10 +17,10 @@ const RulesModal: React.FC<RulesModalProps> = ({ isOpen, onClose, gameType }) =>
           <div className="space-y-4 text-slate-300">
             <h3 className="text-xl font-bold text-white mb-2">Objective</h3>
             <p>Be the first player to empty your hand of cards.</p>
-            
+
             <h3 className="text-xl font-bold text-white mb-2">How to Play</h3>
             <p>Match the active card on the pile by <strong>Shape</strong> (Circle, Triangle, Cross, Square, Star) or by <strong>Number</strong>.</p>
-            
+
             <h3 className="text-xl font-bold text-white mb-2">Special Cards</h3>
             <ul className="list-disc pl-5 space-y-2">
               <li><strong className="text-yellow-400">1 (Hold On):</strong> You play again immediately.</li>
@@ -54,7 +54,7 @@ const RulesModal: React.FC<RulesModalProps> = ({ isOpen, onClose, gameType }) =>
               <li><strong>En Passant:</strong> Capture a pawn that moved 2 squares past yours.</li>
               <li><strong>Promotion:</strong> Pawn reaching end becomes Queen.</li>
             </ul>
-             <p className="text-xs text-slate-400 mt-2">Touch-move rule applies: If you select a piece, move it if able.</p>
+            <p className="text-xs text-slate-400 mt-2">Touch-move rule applies: If you select a piece, move it if able.</p>
           </div>
         );
       case GameType.SURVEY:
@@ -68,9 +68,31 @@ const RulesModal: React.FC<RulesModalProps> = ({ isOpen, onClose, gameType }) =>
 
             <h3 className="text-xl font-bold text-white mb-2">Hard Mode</h3>
             <p>The opponent (Bot) is aggressive and will accumulate points over time. You must be fast to outscore them!</p>
-            
+
             <div className="bg-slate-800 p-3 rounded border border-slate-600">
-                <strong>Tip:</strong> Type your answer and press Enter or click BUZZ. Partial matches often work (e.g., "Phone" for "Cell Phone").
+              <strong>Tip:</strong> Type your answer and press Enter or click BUZZ. Partial matches often work (e.g., "Phone" for "Cell Phone").
+            </div>
+          </div>
+        );
+      case GameType.MANCALA:
+        return (
+          <div className="space-y-4 text-slate-300">
+            <h3 className="text-xl font-bold text-white mb-2">Objective</h3>
+            <p>Capture more stones than your opponent by strategically moving stones around the board.</p>
+
+            <h3 className="text-xl font-bold text-white mb-2">How to Play</h3>
+            <p>On your turn, pick one of your pits (bottom row). All stones from that pit are distributed counter-clockwise, one stone per pit.</p>
+
+            <h3 className="text-xl font-bold text-white mb-2">Special Rules</h3>
+            <ul className="list-disc pl-5 space-y-2">
+              <li><strong className="text-amber-400">Extra Turn:</strong> If the last stone lands in your store, you get another turn.</li>
+              <li><strong className="text-amber-400">Capture:</strong> If the last stone lands in an empty pit on your side, you capture that stone plus all stones in the opposite pit.</li>
+              <li><strong className="text-amber-400">Skip Opponent Store:</strong> When distributing stones, skip your opponent's store.</li>
+              <li><strong className="text-amber-400">Game End:</strong> When one side is empty, the game ends. Remaining stones go to their owner's store.</li>
+            </ul>
+
+            <div className="bg-slate-800 p-3 rounded border border-slate-600">
+              <strong>Winning:</strong> The player with the most stones in their store wins!
             </div>
           </div>
         );
@@ -85,9 +107,9 @@ const RulesModal: React.FC<RulesModalProps> = ({ isOpen, onClose, gameType }) =>
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-slate-800 bg-slate-800/50">
           <h2 className="text-2xl font-brand font-bold text-white tracking-wide">
-             HOW TO PLAY
+            HOW TO PLAY
           </h2>
-          <button 
+          <button
             onClick={onClose}
             className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
           >
@@ -102,7 +124,7 @@ const RulesModal: React.FC<RulesModalProps> = ({ isOpen, onClose, gameType }) =>
 
         {/* Footer */}
         <div className="p-6 border-t border-slate-800 bg-slate-800/30">
-          <button 
+          <button
             onClick={onClose}
             className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition-all shadow-lg shadow-indigo-500/20"
           >

@@ -6,10 +6,10 @@ class AudioService {
   constructor() {
     // Initialize voices immediately if available, or wait for event
     if ('speechSynthesis' in window) {
+      this.voices = window.speechSynthesis.getVoices();
+      window.speechSynthesis.onvoiceschanged = () => {
         this.voices = window.speechSynthesis.getVoices();
-        window.speechSynthesis.onvoiceschanged = () => {
-            this.voices = window.speechSynthesis.getVoices();
-        };
+      };
     }
   }
 
@@ -34,7 +34,7 @@ class AudioService {
 
       osc.type = type;
       osc.frequency.setValueAtTime(freq, ctx.currentTime + startTime);
-      
+
       gain.gain.setValueAtTime(volume, ctx.currentTime + startTime);
       gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + startTime + duration);
 
@@ -64,7 +64,7 @@ class AudioService {
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0.05, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
-    
+
     noise.connect(gain);
     gain.connect(ctx.destination);
     noise.start();
@@ -85,7 +85,7 @@ class AudioService {
   }
 
   playChessMove() { this.playTone(200, 'triangle', 0.1, 0, 0.1); }
-  
+
   playCapture() {
     this.playTone(1200, 'square', 0.05, 0, 0.05);
     this.playTone(100, 'sawtooth', 0.2, 0.02, 0.1);
@@ -122,46 +122,47 @@ class AudioService {
   }
 
   playTransactionSuccess() {
-     this.playTone(1200, 'sine', 0.1, 0);
-     this.playTone(1800, 'sine', 0.3, 0.1);
+    this.playTone(1200, 'sine', 0.1, 0);
+    this.playTone(1800, 'sine', 0.3, 0.1);
   }
 
   // --- TEXT TO SPEECH (HOST VOICE) ---
   speak(text: string) {
     if (this.isMuted || !('speechSynthesis' in window)) return;
-    
+
     // Ensure voices are loaded (Chrome sometimes loads async)
     if (this.voices.length === 0) {
-        this.voices = window.speechSynthesis.getVoices();
+      this.voices = window.speechSynthesis.getVoices();
     }
 
     // Cancel current speech to avoid overlap
     window.speechSynthesis.cancel();
 
     const utterance = new SpeechSynthesisUtterance(text);
-    
+
     // Voice Strategy: Look for "Deep" "Male" US English voices
     // Order of preference for that "Steve Harvey" game show host vibe:
-    // 1. "Google US English Male" (Android/Chrome)
-    // 2. "Microsoft David" (Windows)
-    // 3. "Alex" (macOS - has good gravitas)
-    // 4. Any "Male" US English
-    
-    let preferredVoice = this.voices.find(v => v.name === "Google US English Male");
+    // 1. "Daniel" (High quality macOS/iOS British/English male - very clear)
+    // 2. "Google US English Male" (Android/Chrome)
+    // 3. "Microsoft David" (Windows)
+    // 4. "Alex" (macOS - has good gravitas)
+
+    let preferredVoice = this.voices.find(v => v.name === "Daniel");
+    if (!preferredVoice) preferredVoice = this.voices.find(v => v.name === "Google US English Male");
     if (!preferredVoice) preferredVoice = this.voices.find(v => v.name.includes("Microsoft David"));
     if (!preferredVoice) preferredVoice = this.voices.find(v => v.name === "Alex");
     if (!preferredVoice) preferredVoice = this.voices.find(v => v.lang === 'en-US' && v.name.toLowerCase().includes('male'));
     if (!preferredVoice) preferredVoice = this.voices.find(v => v.lang === 'en-US'); // Fallback
 
     if (preferredVoice) {
-        utterance.voice = preferredVoice;
+      utterance.voice = preferredVoice;
     }
 
     // Tweak properties to sound more like a host
     // Lower pitch = more masculine/authoritative
     // Rate > 1 = Energetic
-    utterance.pitch = 0.8; 
-    utterance.rate = 1.15; 
+    utterance.pitch = 0.9;
+    utterance.rate = 1.1;
     utterance.volume = 1.0;
 
     window.speechSynthesis.speak(utterance);

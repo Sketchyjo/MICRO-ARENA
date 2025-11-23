@@ -1,7 +1,10 @@
 export enum GameType {
   WHOT = 'WHOT',
   CHESS = 'CHESS',
-  SURVEY = 'SURVEY'
+  SURVEY = 'SURVEY',
+  MANCALA = 'MANCALA',
+  CONNECT4 = 'CONNECT4',
+  WORDLE = 'WORDLE'
 }
 
 export enum MatchStatus {
@@ -70,4 +73,13 @@ export interface ContractMatch {
   p1Commit: string;
   p2Commit: string;
   isActive: boolean;
+}
+
+// Mancala Types
+export interface MancalaGameState {
+  pits: number[]; // 14 pits: [0-5] = player 1, [6] = store 1, [7-12] = player 2, [13] = store 2
+  currentPlayer: 'local' | 'opponent';
+  selectedPit: number | null;
+  gamePhase: 'playing' | 'ended';
+  lastMove: { pit: number; extraTurn: boolean; captured: number } | null;
 }

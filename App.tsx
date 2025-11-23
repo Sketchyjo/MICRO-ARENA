@@ -10,6 +10,9 @@ import GameSelect from './pages/GameSelect';
 import WhotGame from './pages/WhotGame';
 import ChessGame from './pages/ChessGame';
 import SurveyGame from './pages/SurveyGame';
+import MancalaGame from './pages/MancalaGame';
+import Connect4Game from './pages/Connect4Game';
+import WordleGame from './pages/WordleGame';
 import Results from './pages/Results';
 
 // --- Context ---
@@ -72,6 +75,9 @@ const App: React.FC = () => {
           <Route path="/game/whot" element={<Layout><WhotGame /></Layout>} />
           <Route path="/game/chess" element={<Layout><ChessGame /></Layout>} />
           <Route path="/game/survey" element={<Layout><SurveyGame /></Layout>} />
+          <Route path="/game/mancala" element={<Layout><MancalaGame /></Layout>} />
+          <Route path="/game/connect4" element={<Layout><Connect4Game /></Layout>} />
+          <Route path="/game/wordle" element={<Layout><WordleGame /></Layout>} />
           <Route path="/results" element={<Layout><Results /></Layout>} />
         </Routes>
       </HashRouter>

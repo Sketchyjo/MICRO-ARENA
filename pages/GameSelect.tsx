@@ -32,6 +32,27 @@ export default function GameSelect() {
       desc: 'Guess the top answers. Speed matters.',
       color: 'from-emerald-500 to-teal-500',
       icon: '📊'
+    },
+    {
+      id: GameType.MANCALA,
+      title: 'Mancala Duel',
+      desc: 'Ancient strategy. Capture the most stones.',
+      color: 'from-amber-600 to-yellow-600',
+      icon: '🪨'
+    },
+    {
+      id: GameType.CONNECT4,
+      title: 'Connect 4',
+      desc: 'Strategic Blitz. Connect 4 to win.',
+      color: 'from-blue-600 to-cyan-500',
+      icon: '🔴'
+    },
+    {
+      id: GameType.WORDLE,
+      title: 'Wordle Duel',
+      desc: 'Intellectual Race. Guess the word.',
+      color: 'from-green-500 to-lime-500',
+      icon: '🔤'
     }
   ];
 
@@ -62,6 +83,9 @@ export default function GameSelect() {
       if (selectedGame === GameType.WHOT) navigate('/game/whot');
       if (selectedGame === GameType.CHESS) navigate('/game/chess');
       if (selectedGame === GameType.SURVEY) navigate('/game/survey');
+      if (selectedGame === GameType.MANCALA) navigate('/game/mancala');
+      if (selectedGame === GameType.CONNECT4) navigate('/game/connect4');
+      if (selectedGame === GameType.WORDLE) navigate('/game/wordle');
 
       setIsFinding(false);
     }, 2500);
@@ -82,6 +106,9 @@ export default function GameSelect() {
     if (gameType === GameType.WHOT) navigate('/game/whot', { state: { isSpectator: true } });
     if (gameType === GameType.CHESS) navigate('/game/chess', { state: { isSpectator: true } });
     if (gameType === GameType.SURVEY) navigate('/game/survey', { state: { isSpectator: true } });
+    if (gameType === GameType.MANCALA) navigate('/game/mancala', { state: { isSpectator: true } });
+    if (gameType === GameType.CONNECT4) navigate('/game/connect4', { state: { isSpectator: true } });
+    if (gameType === GameType.WORDLE) navigate('/game/wordle', { state: { isSpectator: true } });
   };
 
   return (
@@ -95,8 +122,8 @@ export default function GameSelect() {
             key={game.id}
             onClick={() => setSelectedGame(game.id)}
             className={`relative overflow-hidden rounded-2xl p-6 text-left transition-all duration-300 border group ${selectedGame === game.id
-                ? 'border-white ring-2 ring-indigo-500 scale-105 shadow-2xl bg-slate-800'
-                : 'border-slate-700 hover:border-slate-500 bg-slate-800/50 hover:bg-slate-800'
+              ? 'border-white ring-2 ring-indigo-500 scale-105 shadow-2xl bg-slate-800'
+              : 'border-slate-700 hover:border-slate-500 bg-slate-800/50 hover:bg-slate-800'
               }`}
           >
             <div className={`absolute top-0 right-0 w-24 h-24 bg-gradient-to-br ${game.color} blur-[40px] opacity-40 group-hover:opacity-60 transition-opacity`}></div>
@@ -118,8 +145,8 @@ export default function GameSelect() {
                 key={val}
                 onClick={() => setStake(val)}
                 className={`py-2 rounded-md font-mono font-bold border transition-all ${stake === val
-                    ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/30'
-                    : 'bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-500 hover:bg-slate-800'
+                  ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/30'
+                  : 'bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-500 hover:bg-slate-800'
                   }`}
               >
                 {val}
@@ -132,8 +159,8 @@ export default function GameSelect() {
           disabled={!selectedGame || isFinding}
           onClick={handleFindMatch}
           className={`w-full py-4 rounded-lg font-bold text-lg transition-all transform hover:scale-[1.02] active:scale-[0.98] ${!selectedGame || isFinding
-              ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
-              : 'bg-white text-slate-900 hover:bg-indigo-50 shadow-[0_0_20px_rgba(255,255,255,0.3)]'
+            ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
+            : 'bg-white text-slate-900 hover:bg-indigo-50 shadow-[0_0_20px_rgba(255,255,255,0.3)]'
             }`}
         >
           {isFinding ? (
