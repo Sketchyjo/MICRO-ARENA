@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 // --- VISUAL ASSETS ---
 
 const commonPieceStyle = {
-  className: "animate-piece-pop origin-bottom drop-shadow-md"
+  className: "w-full h-full drop-shadow-md transition-transform duration-200 hover:scale-105 active:scale-95 origin-center"
 };
 
 // Standard Chess Piece Paths (Cburnett style) - Clean and Solid
@@ -195,8 +195,14 @@ export default function ChessBoard2D({ fen, onMove, getLegalMoves, orientation =
               // Attempt move
               const success = onMove(selected, square);
               if (!success) {
-                  setSelected(null);
-                  setValidMoves([]);
+                  // If clicking another piece after failed move attempt
+                  if (isMyPiece) {
+                      setSelected(square);
+                      if (getLegalMoves) setValidMoves(getLegalMoves(square));
+                  } else {
+                      setSelected(null);
+                      setValidMoves([]);
+                  }
               }
           }
       } else {
@@ -213,14 +219,14 @@ export default function ChessBoard2D({ fen, onMove, getLegalMoves, orientation =
     <div className="flex flex-col items-center justify-center w-full h-full">
       <div className="relative">
         {/* Ranks Labels */}
-        <div className="absolute -left-6 md:-left-10 top-0 bottom-0 flex flex-col justify-around text-base md:text-2xl font-sans text-slate-800 dark:text-slate-200">
+        <div className="absolute -left-6 md:-left-10 top-0 bottom-0 flex flex-col justify-around text-base md:text-2xl font-sans text-slate-400 font-bold select-none">
           {ranks.map(rank => (
-            <div key={rank} className="h-[12.5%] flex items-center font-bold">{rank}</div>
+            <div key={rank} className="h-[12.5%] flex items-center justify-center">{rank}</div>
           ))}
         </div>
 
         {/* Board Container */}
-        <div className="border-[12px] border-[#262421] bg-[#262421] rounded-sm shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
+        <div className="border-[12px] border-slate-800 bg-slate-900 rounded-lg shadow-2xl">
             <div className="grid grid-cols-8 grid-rows-8 w-[90vw] h-[90vw] max-w-[75vh] max-h-[75vh] aspect-square">
             {board.map((row, rIndex) => (
                 row.map((piece, cIndex) => {
@@ -232,40 +238,44 @@ export default function ChessBoard2D({ fen, onMove, getLegalMoves, orientation =
                 const isLegalMove = validMoves.includes(square);
                 const isCheck = checkSquare === square;
                 
-                // Classic Board Colors with Texture feel
-                const bgColor = isDark ? 'bg-[#769656]' : 'bg-[#eeeed2]';
+                // Professional Board Colors
+                const bgColor = isDark ? 'bg-[#779954]' : 'bg-[#e9edcc]';
 
                 return (
                     <div
                     key={`${rIndex}-${cIndex}`}
                     onClick={() => handleSquareClick(rIndex, cIndex)}
-                    className={`${bgColor} relative flex items-center justify-center cursor-pointer select-none overflow-hidden
-                        ${isSelected ? 'bg-[#baca44] !important shadow-[inset_0_0_15px_rgba(0,0,0,0.2)]' : ''}
+                    className={`${bgColor} relative flex items-center justify-center cursor-pointer overflow-hidden
+                        ${isSelected ? 'ring-inset ring-4 ring-yellow-400 shadow-[inset_0_0_20px_rgba(250,204,21,0.5)]' : ''}
                     `}
                     >
-                        {/* Legal Move Indicators - Full Square Color */}
+                        {/* Legal Move Indicators - Enhanced Visuals */}
                         {isLegalMove && (
-                            <div className={`absolute inset-0 z-10 ${
-                                piece 
-                                ? 'ring-inset ring-8 ring-red-500/50 bg-red-500/10' // Capture: Red Ring
-                                : 'bg-yellow-400/50' // Regular Move: Yellow Overlay
-                            } animate-pulse`} />
+                            <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+                                {piece ? (
+                                    // Capture: Animated Radial Gradient Ring
+                                    <div className="w-full h-full bg-[radial-gradient(circle,rgba(239,68,68,0)_30%,rgba(239,68,68,0.5)_100%)] animate-pulse border-4 border-red-500/50 rounded-full scale-90"></div>
+                                ) : (
+                                    // Move: Soft Glowing Dot
+                                    <div className="w-[30%] h-[30%] bg-[#000000]/20 rounded-full shadow-[0_0_10px_rgba(0,0,0,0.2)]"></div>
+                                )}
+                            </div>
                         )}
                         
-                        {/* Selected Square Highlight Overlay */}
+                        {/* Selected Square subtle overlay */}
                         {isSelected && (
-                            <div className="absolute inset-0 bg-yellow-400/20 pointer-events-none z-0"></div>
+                            <div className="absolute inset-0 bg-yellow-400/10 pointer-events-none z-0"></div>
                         )}
 
-                        {/* Check Indicator (Red Glow) */}
+                        {/* Check Indicator (Intense Red Glow) */}
                         {isCheck && (
-                             <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-red-600/60 to-transparent animate-pulse z-0"></div>
+                             <div className="absolute inset-0 bg-[radial-gradient(circle,rgba(220,38,38,0.8)_0%,transparent_70%)] animate-pulse z-0"></div>
                         )}
 
                         {/* Piece Render */}
                         {piece && (
-                            <div className="w-[90%] h-[90%] transition-transform duration-200 z-20">
-                                {Pieces[piece]({ className: `w-full h-full drop-shadow-lg ${isSelected ? '-translate-y-1' : ''}` })}
+                            <div className={`w-[90%] h-[90%] z-20 ${isSelected ? '-translate-y-1 drop-shadow-2xl' : ''}`}>
+                                {Pieces[piece]({ className: `w-full h-full drop-shadow-lg filter transition-all duration-300 ${isSelected ? 'scale-110' : 'hover:scale-105'}` })}
                             </div>
                         )}
                     </div>
@@ -276,24 +286,12 @@ export default function ChessBoard2D({ fen, onMove, getLegalMoves, orientation =
         </div>
 
         {/* Files Labels */}
-        <div className="flex justify-around w-full mt-2 text-base md:text-2xl font-sans text-slate-800 dark:text-slate-200">
+        <div className="flex justify-around w-full mt-2 text-base md:text-2xl font-sans text-slate-400 font-bold select-none">
           {files.map(file => (
-            <div key={file} className="flex-1 text-center font-bold">{file}</div>
+            <div key={file} className="flex-1 text-center">{file}</div>
           ))}
         </div>
       </div>
-      
-      {/* Global Style for animations */}
-      <style>{`
-        @keyframes piecePop {
-            0% { transform: scale(0.8); opacity: 0; }
-            60% { transform: scale(1.1); }
-            100% { transform: scale(1); opacity: 1; }
-        }
-        .animate-piece-pop {
-            animation: piecePop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
-        }
-      `}</style>
     </div>
   );
 }

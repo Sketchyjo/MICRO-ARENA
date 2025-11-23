@@ -33,6 +33,17 @@ export interface MatchState {
   turn: 'local' | 'opponent';
   timeLeft: number;
   winner: 'local' | 'opponent' | 'draw' | null;
+  isSpectator?: boolean; // New flag for spectator mode
+}
+
+export interface GameHistoryItem {
+  id: string;
+  gameType: GameType;
+  opponent: string;
+  result: 'win' | 'loss' | 'draw';
+  stake: string;
+  date: string;
+  payout?: string;
 }
 
 // Whot Types

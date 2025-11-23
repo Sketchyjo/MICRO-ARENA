@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useApp } from '../App';
 import { gameEngine } from '../services/gameEngine';
 import { WhotCard, MatchStatus, GameType } from '../types';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import RulesModal from '../components/RulesModal';
 
 // --- Assets & Icons ---
@@ -81,6 +81,8 @@ const PlayingCard: React.FC<CardProps> = ({ card, onClick, isPlayable, isHidden,
 export default function WhotGame() {
   const { setMatchState } = useApp();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isSpectator = location.state?.isSpectator || false;
   
   // Game State
   const [deck, setDeck] = useState<WhotCard[]>([]);
@@ -89,15 +91,10 @@ export default function WhotGame() {
   const [discardPile, setDiscardPile] = useState<WhotCard[]>([]);
   
   const [turn, setTurn] = useState<'local' | 'opponent'>('local');
-  const [message, setMessage] = useState("Game Start! Rules: 1 (Hold), 2/5 (Pick), 8 (Skip), 14 (Market), 20 (Whot)");
+  const [message, setMessage] = useState(isSpectator ? "Spectating Match..." : "Game Start! Rules: 1 (Hold), 2/5 (Pick), 8 (Skip), 14 (Market), 20 (Whot)");
   const [isAnimating, setIsAnimating] = useState(false);
-  const [pendingPickup, setPendingPickup] = useState(0); // For Pick 2/Pick 3
-  const [requiredShape, setRequiredShape] = useState<string | null>(null); // For Whot(20)
-  
-  // Hard Mode State
-  const [thinkingTime, setThinkingTime] = useState(0);
-  
-  // Rules Modal
+  const [pendingPickup, setPendingPickup] = useState(0); 
+  const [requiredShape, setRequiredShape] = useState<string | null>(null); 
   const [showRules, setShowRules] = useState(false);
 
   // Initialization
@@ -112,21 +109,29 @@ export default function WhotGame() {
     setOpponentHand(p2);
     setDiscardPile([startCard]);
     setDeck(remainingDeck);
-    
-    // Auto-show rules on first load could be added here if desired
-    // setShowRules(true);
   }, []);
 
-  // Bot Turn Logic
+  // Bot Turn Logic (Opponent)
   useEffect(() => {
     let timeout: ReturnType<typeof setTimeout>;
     if (turn === 'opponent') {
-        const think = Math.random() * 1000 + 1000; // 1-2s
-        setThinkingTime(think);
-        timeout = setTimeout(playOpponentTurn, think);
+        const think = Math.random() * 1000 + 1000;
+        timeout = setTimeout(() => playBotTurn('opponent'), think);
     }
     return () => clearTimeout(timeout);
   }, [turn, deck, discardPile, opponentHand, pendingPickup, requiredShape]);
+
+  // Spectator: Local Player Bot Logic
+  useEffect(() => {
+    if (!isSpectator) return;
+    let timeout: ReturnType<typeof setTimeout>;
+    if (turn === 'local') {
+        const think = Math.random() * 1000 + 1000;
+        timeout = setTimeout(() => playBotTurn('local'), think);
+    }
+    return () => clearTimeout(timeout);
+  }, [turn, isSpectator, deck, discardPile, localHand, pendingPickup, requiredShape]);
+
 
   // --- Helpers ---
   const getTopCard = () => discardPile[discardPile.length - 1];
@@ -135,7 +140,6 @@ export default function WhotGame() {
       if (discardPile.length <= 1) return;
       const top = discardPile[discardPile.length - 1];
       const toShuffle = discardPile.slice(0, -1);
-      // Fisher-Yates
       for (let i = toShuffle.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [toShuffle[i], toShuffle[j]] = [toShuffle[j], toShuffle[i]];
@@ -155,7 +159,6 @@ export default function WhotGame() {
             if (currentDiscard.length > 1) {
                 const top = currentDiscard.pop()!;
                 const toShuffle = currentDiscard;
-                // Shuffle
                 for (let k = toShuffle.length - 1; k > 0; k--) {
                     const j = Math.floor(Math.random() * (k + 1));
                     [toShuffle[k], toShuffle[j]] = [toShuffle[j], toShuffle[k]];
@@ -181,13 +184,10 @@ export default function WhotGame() {
       return drawnCards.length;
   };
 
-  // --- Core Game Logic ---
-
   const handleDrawClick = () => {
-      if (turn !== 'local') return;
+      if (turn !== 'local' || isSpectator) return;
       
       const count = pendingPickup > 0 ? pendingPickup : 1;
-      
       drawCard('local', count);
       
       if (pendingPickup > 0) {
@@ -202,19 +202,8 @@ export default function WhotGame() {
 
   const checkMoveValidity = (card: WhotCard): boolean => {
       const topCard = getTopCard();
-      
-      // If pending penalty (Pick 2 or Pick 3), must play a card that matches number to defend/stack
-      if (pendingPickup > 0) {
-          return card.number === topCard.number || card.number === 20; // Allow 20 to defend? Rules vary. Lets say NO for 20, YES for same number. 
-          // Actually, standard rule is you must play a 2 on a 2, or 5 on a 5.
-          // We will implement simpler rule: You must play exact matching number to stack penalty.
-      }
-
-      // If Whot played previously, must match requested shape
-      if (requiredShape) {
-          return card.shape === requiredShape || card.number === 20;
-      }
-
+      if (pendingPickup > 0) return card.number === topCard.number || card.number === 20; 
+      if (requiredShape) return card.shape === requiredShape || card.number === 20;
       return card.shape === topCard.shape || card.number === topCard.number || card.number === 20;
   };
 
@@ -222,60 +211,25 @@ export default function WhotGame() {
       let nextTurn = player === 'local' ? 'opponent' : 'local';
       let msg = "";
 
-      // 1 (Hold On): Play again
-      if (card.number === 1) {
-          nextTurn = player;
-          msg = "Hold On! Play again.";
-      }
-      // 2 (Pick Two)
-      else if (card.number === 2) {
-          setPendingPickup(prev => prev + 2);
-          msg = "Pick Two!";
-          // Next player must defend or pick. Turn passes to them.
-      }
-      // 5 (Pick Three)
-      else if (card.number === 5) {
-          setPendingPickup(prev => prev + 3);
-          msg = "Pick Three!";
-      }
-      // 8 (Suspension): Skip next player
-      else if (card.number === 8) {
-          nextTurn = player; // In 2 player, skipping opponent means play again
-          msg = "Suspension! Play again.";
-      }
-      // 14 (General Market)
+      if (card.number === 1) { nextTurn = player; msg = "Hold On! Play again."; }
+      else if (card.number === 2) { setPendingPickup(prev => prev + 2); msg = "Pick Two!"; }
+      else if (card.number === 5) { setPendingPickup(prev => prev + 3); msg = "Pick Three!"; }
+      else if (card.number === 8) { nextTurn = player; msg = "Suspension! Play again."; }
       else if (card.number === 14) {
-          // General Market: Opponent picks 1 immediately, but turn still passes normally? 
-          // Usually in 1v1: Opponent picks 1, then it's their turn.
           drawCard(player === 'local' ? 'opponent' : 'local', 1);
           msg = "General Market! Opponent draws 1.";
       }
-      // 20 (Whot): Request Shape
-      else if (card.number === 20) {
-           // Handled before calling this for player, handled inside AI for bot
-      }
-
-      // If we are not waiting for a shape selection (handled elsewhere for local), set requiredShape to null
-      // unless it was a 20 which sets it.
+      
       if (card.number !== 20) {
           setRequiredShape(null);
       }
 
-      setMessage(msg || (nextTurn === 'local' ? "Your Turn" : "Opponent's Turn"));
+      setMessage(msg || (nextTurn === 'local' ? (isSpectator ? "P1 Turn" : "Your Turn") : "Opponent's Turn"));
       setTurn(nextTurn as any);
   };
 
-  // Shape selection for Local Player
-  const handleShapeSelection = (shape: string) => {
-     setRequiredShape(shape);
-     setMessage(`You called for ${shape.toUpperCase()}!`);
-     // Now turn ends
-     setTurn('opponent');
-     setIsAnimating(false); // Hide modal
-  };
-
   const playCard = (card: WhotCard) => {
-    if (turn !== 'local' || isAnimating) return;
+    if (turn !== 'local' || isAnimating || isSpectator) return;
     
     if (!checkMoveValidity(card)) {
         setMessage("⚠️ Invalid Move!");
@@ -283,7 +237,6 @@ export default function WhotGame() {
         return;
     }
 
-    // Stack defense check
     if (pendingPickup > 0) {
         if (card.number !== getTopCard().number) {
              setMessage("Must play matching number to defend!");
@@ -294,145 +247,113 @@ export default function WhotGame() {
     setLocalHand(prev => prev.filter(c => c.id !== card.id));
     setDiscardPile(prev => [...prev, card]);
 
-    if (localHand.length === 1) { // Will be 0 after update
+    if (localHand.length === 1) { 
         finishGame('local');
         return;
     }
 
     if (card.number === 20) {
-        // Show Shape Selector Modal
-        setIsAnimating(true); // Re-using this flag to block interaction and show modal
+        setIsAnimating(true); 
         return; 
     }
 
     executeCardEffect(card, 'local');
   };
 
-  // --- AI LOGIC (Hard Mode) ---
-  const playOpponentTurn = () => {
+  const handleShapeSelection = (shape: string) => {
+     setRequiredShape(shape);
+     setMessage(`Called for ${shape.toUpperCase()}!`);
+     setTurn('opponent');
+     setIsAnimating(false); 
+  };
+
+  // --- GENERIC BOT LOGIC ---
+  const playBotTurn = (player: 'local' | 'opponent') => {
+      const hand = player === 'local' ? [...localHand] : [...opponentHand];
       const topCard = getTopCard();
-      let hand = [...opponentHand];
-      
-      // 1. DEFENSE: Check for defense if pending pickup
+      const setHand = player === 'local' ? setLocalHand : setOpponentHand;
+
+      // 1. Defend
       if (pendingPickup > 0) {
           const defenseCard = hand.find(c => c.number === topCard.number);
           if (defenseCard) {
-              setOpponentHand(hand.filter(c => c.id !== defenseCard.id));
+              setHand(hand.filter(c => c.id !== defenseCard.id));
               setDiscardPile(prev => [...prev, defenseCard]);
-              executeCardEffect(defenseCard, 'opponent');
+              executeCardEffect(defenseCard, player);
               return;
           } else {
-              // Failed to defend
-              drawCard('opponent', pendingPickup);
+              drawCard(player, pendingPickup);
               setPendingPickup(0);
-              setMessage(`Opponent picked ${pendingPickup} cards!`);
-              setTurn('local');
+              setMessage(`${player === 'local' ? 'P1' : 'Opponent'} picked ${pendingPickup} cards!`);
+              setTurn(player === 'local' ? 'opponent' : 'local');
               return;
           }
       }
 
-      // 2. OFFENSE / STRATEGY
-      // Filter valid cards
+      // 2. Strategy
       const validCards = hand.filter(c => {
          if (requiredShape) return c.shape === requiredShape || c.number === 20;
          return c.shape === topCard.shape || c.number === topCard.number || c.number === 20;
       });
 
       if (validCards.length > 0) {
-          // AI Strategy: 
-          // 1. If can finish, finish.
-          // 2. If can play 1 or 8 (Extra turn), do it.
-          // 3. If can attack with 2 or 5, do it.
-          // 4. If can change shape to beneficial suit with 20, do it.
-          // 5. Else play matching number to save shape for later? Or play matching shape.
-          
-          let bestCard = validCards.find(c => [1, 8].includes(c.number)); // Extra turns first
-          if (!bestCard) bestCard = validCards.find(c => [2, 5].includes(c.number)); // Attack
-          if (!bestCard) bestCard = validCards.find(c => c.number === 20 && hand.length > 1); // Use 20 to shift if not last card
-          
-          // Heuristic: Play the card that leaves us with the most options (keeping shapes we have multiples of)
-          if (!bestCard) {
-              // Count remaining shapes
-              const counts: Record<string, number> = {};
-              hand.forEach(c => counts[c.shape] = (counts[c.shape] || 0) + 1);
-              
-              // Prefer keeping the shape we have the MOST of, so discard others? 
-              // Actually, in Whot, you want to discard what you have most of to ensure you don't get stuck?
-              // Or change to what you have most of.
-              // Let's simple play: Play card that matches current shape if possible, to save number matches for switching?
-              bestCard = validCards.find(c => c.shape === (requiredShape || topCard.shape));
-          }
+          let bestCard = validCards.find(c => [1, 8].includes(c.number)); 
+          if (!bestCard) bestCard = validCards.find(c => [2, 5].includes(c.number));
+          if (!bestCard) bestCard = validCards.find(c => c.number === 20 && hand.length > 1);
+          if (!bestCard) bestCard = validCards.find(c => c.shape === (requiredShape || topCard.shape));
+          if (!bestCard) bestCard = validCards[0]; 
 
-          if (!bestCard) bestCard = validCards[0]; // Fallback
-
-          setOpponentHand(hand.filter(c => c.id !== bestCard.id));
+          setHand(hand.filter(c => c.id !== bestCard.id));
           setDiscardPile(prev => [...prev, bestCard]);
 
           if (hand.length === 1) {
-              finishGame('opponent');
+              finishGame(player);
               return;
           }
 
           if (bestCard.number === 20) {
               const counts: Record<string, number> = {};
               hand.forEach(c => counts[c.shape] = (counts[c.shape] || 0) + 1);
-              // Choose shape we have most of
               const bestShape = Object.keys(counts).length > 0 
                     ? Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b) 
                     : 'circle';
               
               setRequiredShape(bestShape);
-              setMessage(`Opponent calls for ${bestShape.toUpperCase()}!`);
-              setTurn('local'); // Turn ends after 20
+              setMessage(`${player === 'local' ? 'P1' : 'Opponent'} calls for ${bestShape.toUpperCase()}!`);
+              setTurn(player === 'local' ? 'opponent' : 'local');
               return;
           }
-
-          executeCardEffect(bestCard, 'opponent');
+          executeCardEffect(bestCard, player);
       } else {
-          drawCard('opponent', 1);
-          setMessage("Opponent went to market.");
-          setTurn('local');
+          drawCard(player, 1);
+          setMessage(`${player === 'local' ? 'P1' : 'Opponent'} went to market.`);
+          setTurn(player === 'local' ? 'opponent' : 'local');
       }
   };
 
   const finishGame = (winner: 'local' | 'opponent') => {
-      setMatchState(prev => ({
-          ...prev,
-          status: MatchStatus.REVEALING,
-          winner
-      }));
+      setMatchState(prev => ({ ...prev, status: MatchStatus.REVEALING, winner }));
       navigate('/results');
   };
 
   return (
-    <div className="flex-1 flex flex-col w-full h-[85vh] relative rounded-xl overflow-hidden shadow-2xl border-4 border-[#3e2723]">
+    <div className="flex-1 flex flex-col w-full h-[85vh] relative rounded-xl overflow-hidden shadow-2xl border-4 border-[#3e2723] animate-fade-in">
       <div className="absolute inset-0 z-0 bg-[url('https://img.freepik.com/free-photo/wood-texture-background_1154-855.jpg')] bg-cover bg-center">
         <div className="absolute inset-0 bg-black/40"></div>
       </div>
 
-      <RulesModal 
-        isOpen={showRules} 
-        onClose={() => setShowRules(false)} 
-        gameType={GameType.WHOT} 
-      />
+      <RulesModal isOpen={showRules} onClose={() => setShowRules(false)} gameType={GameType.WHOT} />
 
-      {/* Header Area / Opponent */}
+      {/* Opponent Area */}
       <div className="relative z-10 py-4 flex flex-col items-center justify-start h-[25%]">
-         {/* Rules Button */}
-        <button 
-            onClick={() => setShowRules(true)}
-            className="absolute top-4 right-4 w-10 h-10 bg-black/50 hover:bg-black/70 rounded-full flex items-center justify-center text-white border border-white/20 z-50 backdrop-blur-md"
-            title="How to Play"
-        >
-            <span className="font-bold font-mono text-lg">?</span>
-        </button>
+        <button onClick={() => setShowRules(true)} className="absolute top-4 right-4 w-10 h-10 bg-black/50 hover:bg-black/70 rounded-full flex items-center justify-center text-white border border-white/20 z-50 backdrop-blur-md">?</button>
 
         <div className="flex items-center gap-4 mb-2">
-            <div className={`w-12 h-12 rounded-full border-2 ${turn === 'opponent' ? 'border-yellow-400 animate-pulse' : 'border-white/30'} bg-indigo-900 flex items-center justify-center overflow-hidden shadow-lg transition-all`}>
+            <div className={`w-12 h-12 rounded-full border-2 ${turn === 'opponent' ? 'border-yellow-400 animate-pulse-glow' : 'border-white/30'} bg-indigo-900 flex items-center justify-center overflow-hidden shadow-lg transition-all`}>
                 <img src={`https://api.dicebear.com/9.x/avataaars/svg?seed=Felix`} alt="Opponent" />
             </div>
             <div className="bg-black/60 backdrop-blur-md px-4 py-1 rounded-full border border-white/10">
-                <div className="text-white font-bold text-sm">Opponent {turn === 'opponent' && "🤔"}</div>
+                <div className="text-white font-bold text-sm">Opponent</div>
                 <div className="text-white/60 text-xs font-mono">{opponentHand.length} Cards</div>
             </div>
         </div>
@@ -458,12 +379,12 @@ export default function WhotGame() {
             {requiredShape && <div className="text-xs uppercase mt-1 text-yellow-300 font-black">Target: {requiredShape}</div>}
         </div>
 
-        <div className="flex items-center gap-8 md:gap-12">
+        <div className="flex items-center gap-8 md:gap-12 animate-scale-in">
             {/* Draw Pile */}
             <div className="relative group">
                  {deck.length > 0 ? (
                      <>
-                        <div onClick={handleDrawClick} className={`absolute top-0 left-0 w-full h-full z-20 cursor-pointer ${turn === 'local' ? 'hover:scale-105 transition-transform' : ''}`}></div>
+                        <div onClick={handleDrawClick} className={`absolute top-0 left-0 w-full h-full z-20 ${turn === 'local' && !isSpectator ? 'cursor-pointer hover:scale-105 transition-transform' : 'cursor-default'}`}></div>
                         <div className="absolute top-[-4px] left-[-4px] z-0 opacity-80"><PlayingCard card={{id: 'd1', shape: 'circle', number: 1, isSpecial: false}} isHidden={true} /></div>
                         <div className="absolute top-[-2px] left-[-2px] z-0 opacity-90"><PlayingCard card={{id: 'd2', shape: 'circle', number: 1, isSpecial: false}} isHidden={true} /></div>
                         <PlayingCard card={{id: 'd3', shape: 'circle', number: 1, isSpecial: false}} isHidden={true} />
@@ -481,7 +402,7 @@ export default function WhotGame() {
             {/* Discard Pile */}
             <div className="relative">
                 {discardPile.map((card, i) => {
-                    if (i < discardPile.length - 4) return null; // optimize
+                    if (i < discardPile.length - 4) return null; 
                     const isTop = i === discardPile.length - 1;
                     return (
                         <div key={card.id} className={`absolute top-0 left-0 transition-all duration-300 ${isTop ? 'relative z-10' : 'z-0'}`}
@@ -497,26 +418,26 @@ export default function WhotGame() {
       {/* Player Hand */}
       <div className="relative z-20 h-[35%] bg-gradient-to-t from-black/90 to-transparent flex flex-col justify-end pb-4">
         <div className="absolute bottom-4 left-4 flex items-center gap-3 z-30 pointer-events-none">
-            <div className={`w-12 h-12 rounded-full border-2 ${turn === 'local' ? 'border-emerald-400' : 'border-gray-500'} bg-indigo-900 flex items-center justify-center overflow-hidden shadow-lg`}>
-                 <img src={`https://api.dicebear.com/9.x/avataaars/svg?seed=You`} alt="You" />
+            <div className={`w-12 h-12 rounded-full border-2 ${turn === 'local' ? 'border-emerald-400 animate-pulse-glow' : 'border-gray-500'} bg-indigo-900 flex items-center justify-center overflow-hidden shadow-lg`}>
+                 <img src={`https://api.dicebear.com/9.x/avataaars/svg?seed=${isSpectator ? "ProGamer" : "You"}`} alt="You" />
             </div>
             <div>
-                <div className="text-white font-bold text-shadow">You</div>
-                <div className="text-emerald-400 text-xs font-mono">My Turn: {turn === 'local' ? 'YES' : 'NO'}</div>
+                <div className="text-white font-bold text-shadow">{isSpectator ? "Pro_Gamer_1" : "You"}</div>
+                <div className="text-emerald-400 text-xs font-mono">{turn === 'local' ? 'ACTIVE' : 'WAITING'}</div>
             </div>
         </div>
 
         <div className="flex justify-center items-end px-4 pb-2 overflow-x-auto no-scrollbar">
              <div className="flex -space-x-4 md:-space-x-8 min-w-max px-10 pb-4 pt-10">
                 {localHand.map((card, i) => {
-                    const isPlayable = turn === 'local' && checkMoveValidity(card);
+                    const isPlayable = turn === 'local' && checkMoveValidity(card) && !isSpectator;
                     return (
                         <div key={card.id} 
                             style={{ 
                                 transformOrigin: 'bottom center',
                                 transform: `rotate(${(i - (localHand.length - 1) / 2) * 5}deg) translateY(${Math.abs(i - (localHand.length - 1) / 2) * 5}px)` 
                             }}
-                            className="transition-transform duration-300 hover:z-50 hover:scale-110 hover:-translate-y-8"
+                            className={`transition-transform duration-300 ${isPlayable ? 'hover:z-50 hover:scale-110 hover:-translate-y-8' : ''}`}
                         >
                             <PlayingCard card={card} onClick={() => playCard(card)} isPlayable={isPlayable} />
                         </div>
@@ -527,7 +448,7 @@ export default function WhotGame() {
       </div>
 
       {/* Shape Selector Modal */}
-      {isAnimating && turn === 'local' && (
+      {isAnimating && turn === 'local' && !isSpectator && (
           <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center animate-fadeIn">
               <div className="bg-slate-800 p-8 rounded-2xl border-2 border-yellow-400/50 shadow-2xl text-center">
                   <h3 className="text-2xl font-bold mb-6 text-white">Select a Shape (I NEED...)</h3>

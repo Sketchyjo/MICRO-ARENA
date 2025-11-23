@@ -1,76 +1,153 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import ChessBoard2D, { Pieces } from '../components/ChessBoard2D';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../App';
 import { MatchStatus, GameType } from '../types';
-import { Chess } from 'chess.js';
+import { Chess, PieceSymbol, Color } from 'chess.js';
 import RulesModal from '../components/RulesModal';
+
+// --- Captured Piece Component ---
+const CapturedPiecesDisplay = ({ captured, color }: { captured: string[], color: 'w' | 'b' }) => {
+    // Sort logic: Pawn < Knight/Bishop < Rook < Queen
+    const valueMap: Record<string, number> = { p: 1, n: 3, b: 3.1, r: 5, q: 9 };
+    const sorted = [...captured].sort((a, b) => valueMap[a] - valueMap[b]);
+
+    return (
+        <div className="flex flex-wrap gap-1 h-6 items-center">
+            {sorted.map((p, i) => (
+                <div key={i} className="w-4 h-4 md:w-5 md:h-5 opacity-80 animate-scale-in">
+                   {Pieces[color === 'w' ? p.toUpperCase() : p]({ className: "w-full h-full drop-shadow-sm" })}
+                </div>
+            ))}
+        </div>
+    );
+};
 
 export default function ChessGame() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { setMatchState } = useApp();
+  const isSpectator = location.state?.isSpectator || false;
+
   const [timer, setTimer] = useState(600);
-  
-  // Game State
   const [game, setGame] = useState(new Chess());
   const [fen, setFen] = useState(game.fen());
   const [isAiThinking, setIsAiThinking] = useState(false);
-  const [status, setStatus] = useState("Your Turn");
+  const [status, setStatus] = useState(isSpectator ? "Spectating Match..." : "Your Turn");
   const [checkSquare, setCheckSquare] = useState<string | null>(null);
-  
-  // Promotion State
   const [pendingPromotion, setPendingPromotion] = useState<{from: string, to: string} | null>(null);
-  
-  // Rules Modal
   const [showRules, setShowRules] = useState(false);
+  
+  // Game Over Modal State
+  const [gameOverModal, setGameOverModal] = useState<{
+      isOpen: boolean;
+      winner: 'local' | 'opponent' | 'draw' | null;
+      reason: string;
+  }>({ isOpen: false, winner: null, reason: '' });
+
+  // State for Captured Pieces
+  const [capturedWhite, setCapturedWhite] = useState<string[]>([]);
+  const [capturedBlack, setCapturedBlack] = useState<string[]>([]);
+  
+  // Visual Effects State
+  const [boardShake, setBoardShake] = useState(false);
+
+  // Update captured pieces whenever FEN changes
+  useEffect(() => {
+      const board = game.board();
+      const currentPieces: Record<string, number> = { w: { p:0,n:0,b:0,r:0,q:0,k:0 } as any, b: { p:0,n:0,b:0,r:0,q:0,k:0 } as any };
+      
+      board.forEach(row => row.forEach(p => {
+          if(p) currentPieces[p.color][p.type]++;
+      }));
+
+      const initialCounts = { p:8, n:2, b:2, r:2, q:1, k:1 };
+      
+      const calcCaptured = (color: 'w' | 'b') => {
+          const caps: string[] = [];
+          Object.keys(initialCounts).forEach(type => {
+              const t = type as PieceSymbol;
+              const missing = initialCounts[t as keyof typeof initialCounts] - currentPieces[color][t];
+              for(let i=0; i<missing; i++) caps.push(t);
+          });
+          return caps;
+      };
+
+      setCapturedWhite(calcCaptured('w'));
+      setCapturedBlack(calcCaptured('b'));
+
+  }, [fen, game]);
 
   // Timer
   useEffect(() => {
+      if (gameOverModal.isOpen) return;
       const interval = setInterval(() => {
           setTimer(prev => {
               if (prev <= 1) {
                   clearInterval(interval);
-                  handleGameOver('opponent'); // Time run out = lose
+                  handleGameOver('opponent', 'Time Out'); 
                   return 0;
               }
               return prev - 1;
           });
       }, 1000);
       return () => clearInterval(interval);
-  }, []);
+  }, [gameOverModal.isOpen]);
 
-  const handleGameOver = (winner: 'local' | 'opponent' | 'draw') => {
-      setMatchState(s => ({ ...s, status: MatchStatus.REVEALING, winner }));
-      navigate('/results');
+  // --- SPECTATOR MODE LOOP ---
+  useEffect(() => {
+      if (!isSpectator || gameOverModal.isOpen) return;
+      
+      const interval = setInterval(() => {
+          if (game.isGameOver()) return;
+          // Make random/semi-smart move for WHOEVER's turn it is
+          makeBestMove(2); 
+      }, 2000); 
+
+      return () => clearInterval(interval);
+  }, [isSpectator, game, fen, gameOverModal.isOpen]); 
+
+  const handleGameOver = (winner: 'local' | 'opponent' | 'draw', reason: string = "Game Over") => {
+      setGameOverModal({
+          isOpen: true,
+          winner,
+          reason
+      });
+  };
+
+  const restartGame = () => {
+      const newGame = new Chess();
+      setGame(newGame);
+      setFen(newGame.fen());
+      setTimer(600);
+      setCheckSquare(null);
+      setCapturedWhite([]);
+      setCapturedBlack([]);
+      setGameOverModal({ isOpen: false, winner: null, reason: '' });
+      setStatus(isSpectator ? "Spectating Match..." : "Your Turn");
   };
 
   const handleResign = () => {
-    if (window.confirm("Are you sure you want to resign? You will forfeit this match.")) {
-      handleGameOver('opponent');
+    if (isSpectator) {
+        navigate('/select'); 
+        return;
+    }
+    if (window.confirm("Are you sure you want to resign?")) {
+      handleGameOver('opponent', 'Resignation');
     }
   };
 
-  // --- AI ENGINE (Hard Mode - Minimax) ---
+  // --- AI ENGINE (Minimax) ---
   const getPieceValue = (piece: any, square: string, endgame: boolean) => {
       if (!piece) return 0;
       const values: Record<string, number> = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000 };
       let val = values[piece.type] || 0;
-      
-      // Basic Position Tables (Simplified)
-      // Encourages center control and pawn advancement
       const isWhite = piece.color === 'w';
-      
-      // Center bonus
-      if ((piece.type === 'n' || piece.type === 'p') && ['d4','d5','e4','e5'].includes(square)) {
-          val += 10;
-      }
-      
-      // Pawn progression bonus
+      if ((piece.type === 'n' || piece.type === 'p') && ['d4','d5','e4','e5'].includes(square)) val += 10;
       if (piece.type === 'p') {
           const rank = parseInt(square[1]);
           val += (isWhite ? rank : (9-rank)) * 5; 
       }
-
       return isWhite ? val : -val;
   };
 
@@ -78,7 +155,7 @@ export default function ChessGame() {
       let totalEvaluation = 0;
       const board = chess.board();
       const files = ['a','b','c','d','e','f','g','h'];
-      const endgame = chess.history().length > 40; // rough endgame heuristic
+      const endgame = chess.history().length > 40; 
       
       board.forEach((row, rIdx) => {
           row.forEach((piece, cIdx) => {
@@ -93,12 +170,9 @@ export default function ChessGame() {
   };
 
   const minimax = (chess: Chess, depth: number, alpha: number, beta: number, isMaximisingPlayer: boolean): number => {
-      if (depth === 0 || chess.isGameOver()) {
-          return -evaluateBoard(chess); 
-      }
+      if (depth === 0 || chess.isGameOver()) return -evaluateBoard(chess); 
 
       const possibleMoves = chess.moves();
-      // Order moves: captures first to improve pruning
       possibleMoves.sort((a, b) => (b.includes('x') ? 1 : 0) - (a.includes('x') ? 1 : 0));
       
       if (isMaximisingPlayer) {
@@ -124,52 +198,71 @@ export default function ChessGame() {
       }
   };
 
-  const makeBestMove = useCallback(() => {
-      // Hard Mode: Depth 3 is significant for JS in browser
-      const depth = 3;
+  const makeBestMove = useCallback((depthOverride?: number) => {
+      const depth = depthOverride || 3;
       const possibleMoves = game.moves();
       if (possibleMoves.length === 0) return;
 
       let bestMoveValue = -Infinity;
       let bestMoveFound = possibleMoves[0];
+      possibleMoves.sort(() => Math.random() - 0.5); 
 
-      // Shuffle initial moves for variety if values are equal
-      possibleMoves.sort(() => Math.random() - 0.5);
+      const isWhiteTurn = game.turn() === 'w';
 
       for(let i = 0; i < possibleMoves.length; i++) {
           const move = possibleMoves[i];
           game.move(move);
-          const value = minimax(game, depth, -Infinity, Infinity, false); 
+          const value = minimax(game, depth - 1, -Infinity, Infinity, !isWhiteTurn); 
           game.undo();
           
-          if(value >= bestMoveValue) {
-              bestMoveValue = value;
-              bestMoveFound = move;
+          if (isWhiteTurn) {
+              if(value >= bestMoveValue) {
+                  bestMoveValue = value;
+                  bestMoveFound = move;
+              }
+          } else {
+              if (i===0) bestMoveValue = isWhiteTurn ? -Infinity : Infinity;
+
+              if (isWhiteTurn) {
+                 if (value > bestMoveValue) { bestMoveValue = value; bestMoveFound = move; }
+              } else {
+                 if (value < bestMoveValue) { bestMoveValue = value; bestMoveFound = move; }
+              }
           }
       }
       
-      game.move(bestMoveFound);
+      const move = game.move(bestMoveFound);
+      if (move && (move.flags.includes('c') || move.flags.includes('e'))) {
+          setBoardShake(true);
+          setTimeout(() => setBoardShake(false), 500);
+      }
+
       setFen(game.fen());
       checkGameStatus();
-      setIsAiThinking(false);
-      setStatus("Your Turn");
-  }, [game]);
+      if(!isSpectator) setIsAiThinking(false);
+      if(!isSpectator) setStatus("Your Turn");
+  }, [game, isSpectator]);
 
   const checkGameStatus = () => {
       if (game.isCheckmate()) {
-          handleGameOver(game.turn() === 'w' ? 'opponent' : 'local');
-      } else if (game.isDraw() || game.isStalemate() || game.isThreefoldRepetition() || game.isInsufficientMaterial()) {
-          handleGameOver('draw');
+          handleGameOver(game.turn() === 'w' ? 'opponent' : 'local', 'Checkmate');
+      } else if (game.isDraw()) {
+          handleGameOver('draw', 'Draw');
+      } else if (game.isStalemate()) {
+          handleGameOver('draw', 'Stalemate');
+      } else if (game.isThreefoldRepetition()) {
+          handleGameOver('draw', 'Repetition');
+      } else if (game.isInsufficientMaterial()) {
+          handleGameOver('draw', 'Insufficient Material');
       } else if (game.inCheck()) {
-          setStatus(game.turn() === 'w' ? "Check! (Escape!)" : "Check! (Bot)");
+          setStatus(game.turn() === 'w' ? "Check! (White)" : "Check! (Black)");
+          setBoardShake(true);
+          setTimeout(() => setBoardShake(false), 500);
           
-          // Find King's Square for visual feedback
           const turn = game.turn();
           const board = game.board();
           const files = ['a','b','c','d','e','f','g','h'];
-          
           let kSquare = null;
-          // Simple scan
           for(let r=0; r<8; r++) {
               for(let c=0; c<8; c++) {
                   const p = board[r][c];
@@ -181,66 +274,60 @@ export default function ChessGame() {
               if (kSquare) break;
           }
           setCheckSquare(kSquare);
-
       } else {
-          setStatus(game.turn() === 'w' ? "Your Turn" : "Opponent Thinking...");
+          if (isSpectator) setStatus(`Spectating: ${game.turn() === 'w' ? "White" : "Black"}'s Turn`);
+          else setStatus(game.turn() === 'w' ? "Your Turn" : "Opponent Thinking...");
           setCheckSquare(null);
       }
   };
 
+  // Bot Trigger (Non-Spectator)
   useEffect(() => {
-      if (game.turn() === 'b' && !game.isGameOver()) {
+      if (!isSpectator && game.turn() === 'b' && !game.isGameOver() && !gameOverModal.isOpen) {
           setIsAiThinking(true);
           setStatus("Opponent Thinking...");
           setTimeout(() => {
               makeBestMove();
           }, 100);
       }
-  }, [fen, game, makeBestMove]);
+  }, [fen, game, makeBestMove, isSpectator, gameOverModal.isOpen]);
 
   const onDrop = (sourceSquare: string, targetSquare: string) => {
+      if (isSpectator || gameOverModal.isOpen) return false;
       if (game.turn() !== 'w' || isAiThinking) return false;
 
-      // Check for promotion move availability first
       const moves = game.moves({ verbose: true });
       const isPromotion = moves.some(m => m.from === sourceSquare && m.to === targetSquare && m.promotion);
 
       if (isPromotion) {
           setPendingPromotion({ from: sourceSquare, to: targetSquare });
-          return false; // Pause move for UI selection
+          return false; 
       }
 
-      let moveConfig = {
-          from: sourceSquare,
-          to: targetSquare,
-          promotion: 'q' // default fallthrough
-      };
-
-      // UX Handling: Support "Click King then Rook" to castle
+      let moveConfig: any = { from: sourceSquare, to: targetSquare, promotion: 'q' };
       const piece = game.get(sourceSquare);
       const targetPiece = game.get(targetSquare);
       
-      // If user drags King to Rook, interpret as castling
+      // Handle Castle Click Correction (if user clicks king then rook)
       if (piece?.type === 'k' && targetPiece?.type === 'r' && piece.color === targetPiece.color) {
-          // White Castling
           if (piece.color === 'w') {
              if (sourceSquare === 'e1') {
-                 if (targetSquare === 'h1') moveConfig.to = 'g1'; // King-side
-                 if (targetSquare === 'a1') moveConfig.to = 'c1'; // Queen-side
+                 if (targetSquare === 'h1') moveConfig.to = 'g1'; 
+                 if (targetSquare === 'a1') moveConfig.to = 'c1'; 
              }
           }
       }
 
       try {
-          // chess.js validates:
-          // 1. Piece moved?
-          // 2. Path clear?
-          // 3. King in check?
-          // 4. Square attacked?
           const move = game.move(moveConfig);
-
           if (move === null) return false;
-          
+
+          // Detect Capture for visual effect
+          if (move.flags.includes('c') || move.flags.includes('e')) {
+              setBoardShake(true);
+              setTimeout(() => setBoardShake(false), 500);
+          }
+
           setFen(game.fen());
           checkGameStatus();
           return true;
@@ -253,11 +340,11 @@ export default function ChessGame() {
       if (!pendingPromotion) return;
       const { from, to } = pendingPromotion;
       try {
-          game.move({
-              from,
-              to,
-              promotion: pieceChar
-          });
+          const move = game.move({ from, to, promotion: pieceChar });
+          if (move && (move.flags.includes('c') || move.flags.includes('e'))) {
+              setBoardShake(true);
+              setTimeout(() => setBoardShake(false), 500);
+          }
           setFen(game.fen());
           checkGameStatus();
       } catch (e) {
@@ -266,17 +353,15 @@ export default function ChessGame() {
       setPendingPromotion(null);
   };
   
-  // Callback to get legal moves for UI highlighting
   const getLegalMoves = (square: string) => {
+      if (isSpectator || gameOverModal.isOpen) return [];
       const moves = game.moves({ square, verbose: true });
       const moveSquares = moves.map(m => m.to);
-      
-      // UX Enhancement: Highlight Rooks if castling is possible to indicate click-to-castle
       const piece = game.get(square);
       if (piece && piece.type === 'k') {
           moves.forEach(m => {
-              if (m.flags.includes('k')) moveSquares.push(piece.color === 'w' ? 'h1' : 'h8'); // Kingside rook
-              if (m.flags.includes('q')) moveSquares.push(piece.color === 'w' ? 'a1' : 'a8'); // Queenside rook
+              if (m.flags.includes('k')) moveSquares.push(piece.color === 'w' ? 'h1' : 'h8'); 
+              if (m.flags.includes('q')) moveSquares.push(piece.color === 'w' ? 'a1' : 'a8'); 
           });
       }
       return moveSquares;
@@ -286,14 +371,49 @@ export default function ChessGame() {
   const seconds = timer % 60;
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center w-full h-full gap-2 py-2 overflow-hidden bg-slate-900 relative">
-        <RulesModal 
-          isOpen={showRules} 
-          onClose={() => setShowRules(false)} 
-          gameType={GameType.CHESS} 
-        />
+    <div className="flex-1 flex flex-col items-center justify-center w-full h-full gap-2 py-2 overflow-hidden bg-slate-900 relative animate-fade-in">
+        <RulesModal isOpen={showRules} onClose={() => setShowRules(false)} gameType={GameType.CHESS} />
 
-        {/* Info Button */}
+        {/* --- GAME OVER MODAL --- */}
+        {gameOverModal.isOpen && (
+            <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fadeIn">
+                <div className="bg-slate-800 border-2 border-slate-600 rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl transform scale-100">
+                    <div className="mb-4">
+                        {gameOverModal.winner === 'local' && <div className="text-6xl animate-bounce">🏆</div>}
+                        {gameOverModal.winner === 'opponent' && <div className="text-6xl animate-pulse">💀</div>}
+                        {gameOverModal.winner === 'draw' && <div className="text-6xl">🤝</div>}
+                    </div>
+                    
+                    <h2 className={`text-3xl font-black mb-2 uppercase ${
+                        gameOverModal.winner === 'local' ? 'text-emerald-400' : 
+                        gameOverModal.winner === 'opponent' ? 'text-red-400' : 'text-slate-300'
+                    }`}>
+                        {isSpectator 
+                            ? (gameOverModal.winner === 'local' ? 'White Wins' : gameOverModal.winner === 'opponent' ? 'Black Wins' : 'Draw')
+                            : (gameOverModal.winner === 'local' ? 'You Won!' : gameOverModal.winner === 'opponent' ? 'You Lost' : 'Draw')
+                        }
+                    </h2>
+                    
+                    <p className="text-slate-400 font-mono mb-8">{gameOverModal.reason}</p>
+                    
+                    <div className="flex flex-col gap-3">
+                        <button 
+                            onClick={restartGame}
+                            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition-all shadow-lg shadow-indigo-500/30"
+                        >
+                            {isSpectator ? "WATCH AGAIN" : "PLAY AGAIN"}
+                        </button>
+                        <button 
+                            onClick={() => navigate('/select')}
+                            className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold rounded-lg transition-all"
+                        >
+                            GO TO MENU
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+
         <button 
             onClick={() => setShowRules(true)}
             className="absolute top-4 right-4 z-50 w-8 h-8 rounded-full bg-slate-700/50 hover:bg-slate-600 text-slate-300 hover:text-white border border-slate-500 flex items-center justify-center transition-all"
@@ -301,45 +421,49 @@ export default function ChessGame() {
             ?
         </button>
 
+        {/* TOP BAR: Opponent Info + Captured White Pieces (since Opponent is Black, they captured White) */}
         <div className="w-full max-w-[75vh] flex justify-between items-end px-2">
              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 bg-slate-700 rounded-full border-2 ${isAiThinking ? 'border-yellow-400' : 'border-slate-500'} overflow-hidden`}>
-                    <img src="https://api.dicebear.com/9.x/avataaars/svg?seed=Felix" alt="Opponent" />
+                <div className={`w-10 h-10 bg-slate-700 rounded-full border-2 ${isAiThinking || (isSpectator && game.turn() === 'b') ? 'border-yellow-400 shadow-glow' : 'border-slate-500'} overflow-hidden transition-all duration-300`}>
+                    <img src={`https://api.dicebear.com/9.x/avataaars/svg?seed=${isSpectator ? "ChessMaster" : "Felix"}`} alt="Opponent" />
                 </div>
                 <div className="text-left">
-                    <div className="font-bold text-slate-200 text-sm">Opponent (Bot)</div>
+                    <div className="font-bold text-slate-200 text-sm flex items-center gap-2">
+                        {isSpectator ? "ChessMaster (Black)" : "Opponent (Bot)"}
+                        {capturedWhite.length > 0 && (
+                             <CapturedPiecesDisplay captured={capturedWhite} color='w' />
+                        )}
+                    </div>
                     <div className="text-[10px] text-slate-400 font-mono">Hard Mode (Depth 3)</div>
                 </div>
             </div>
-            <div className={`text-2xl font-bold ${status.includes('Check') ? 'text-red-500 animate-bounce' : 'text-slate-300'}`}>
+            <div className={`text-xl md:text-2xl font-bold ${status.includes('Check') ? 'text-red-500 animate-bounce' : 'text-slate-300'}`}>
                 {status}
             </div>
-            <div className="text-3xl font-mono font-black text-red-500">
+            <div className="text-2xl md:text-3xl font-mono font-black text-red-500 bg-black/20 px-2 rounded">
                 {minutes < 10 ? `0${minutes}` : minutes}:{seconds < 10 ? `0${seconds}` : seconds}
             </div>
         </div>
 
-        <div className="rounded-lg shadow-2xl z-10 border-4 border-slate-700 relative">
-            <ChessBoard2D 
-                fen={fen} 
-                onMove={onDrop} 
-                getLegalMoves={getLegalMoves}
-                orientation="white"
-                checkSquare={checkSquare}
-            />
+        {/* BOARD */}
+        <div className={`rounded-lg shadow-2xl z-10 border-4 border-slate-700 relative animate-scale-in transition-transform duration-100 ${boardShake ? 'translate-x-1 translate-y-1' : ''}`}>
+             <div className={boardShake ? 'animate-shake' : ''}>
+                <ChessBoard2D 
+                    fen={fen} 
+                    onMove={onDrop} 
+                    getLegalMoves={getLegalMoves}
+                    orientation="white"
+                    checkSquare={checkSquare}
+                />
+            </div>
 
-            {/* Promotion Modal Overlay */}
             {pendingPromotion && (
                 <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm rounded-lg animate-fadeIn">
-                    <div className="bg-slate-800 p-6 rounded-2xl border-2 border-yellow-400/50 shadow-[0_0_50px_rgba(0,0,0,0.5)] transform scale-110">
+                    <div className="bg-slate-800 p-6 rounded-2xl border-2 border-yellow-400/50 shadow-2xl transform scale-110">
                         <h3 className="text-white text-center mb-6 font-bold text-lg uppercase tracking-wider">Promote Pawn</h3>
                         <div className="flex gap-4">
                             {['q', 'r', 'b', 'n'].map(p => (
-                                <button 
-                                    key={p}
-                                    onClick={() => handlePromotionSelect(p)}
-                                    className="w-16 h-16 bg-slate-700 hover:bg-slate-600 rounded-xl flex items-center justify-center border-2 border-slate-600 hover:border-yellow-400 transition-all shadow-xl group"
-                                >
+                                <button key={p} onClick={() => handlePromotionSelect(p)} className="w-16 h-16 bg-slate-700 hover:bg-slate-600 rounded-xl flex items-center justify-center border-2 border-slate-600 hover:border-yellow-400 transition-all shadow-xl group">
                                     <div className="w-12 h-12 transform group-hover:scale-110 transition-transform">
                                         {Pieces[p.toUpperCase()]({ className: "w-full h-full drop-shadow-lg" })}
                                     </div>
@@ -351,26 +475,50 @@ export default function ChessGame() {
             )}
         </div>
 
+        {/* BOTTOM BAR: Player Info + Captured Black Pieces */}
         <div className="w-full max-w-[75vh] flex justify-between items-start px-2 mt-4">
              <div className="text-left">
-                 <div className="font-bold text-emerald-400 text-sm">You</div>
+                 <div className="font-bold text-emerald-400 text-sm flex items-center gap-2">
+                     {isSpectator ? "Pro_Gamer_1 (White)" : "You (White)"}
+                     {capturedBlack.length > 0 && (
+                          <CapturedPiecesDisplay captured={capturedBlack} color='b' />
+                     )}
+                 </div>
                  <div className="text-[10px] text-slate-400 font-mono">White Pieces</div>
              </div>
              
              <button 
                 onClick={handleResign}
-                className="px-4 py-1.5 bg-red-900/30 hover:bg-red-900/60 border border-red-500/50 text-red-400 text-xs font-bold rounded flex items-center gap-2 transition-colors uppercase tracking-wider"
+                className={`px-4 py-1.5 border text-xs font-bold rounded flex items-center gap-2 transition-colors uppercase tracking-wider ${
+                    isSpectator 
+                    ? 'bg-slate-800 border-slate-600 text-slate-400 hover:bg-slate-700' 
+                    : 'bg-red-900/30 hover:bg-red-900/60 border-red-500/50 text-red-400'
+                }`}
              >
-                <span className="w-2 h-2 bg-red-500 rounded-full"></span>
-                Resign
+                {isSpectator ? "Leave" : (
+                    <>
+                        <span className="w-2 h-2 bg-red-500 rounded-full"></span> Resign
+                    </>
+                )}
              </button>
 
              <div className="flex items-center gap-3">
-                 <div className="w-10 h-10 bg-indigo-600 rounded-full border-2 border-indigo-400 overflow-hidden">
-                    <img src="https://api.dicebear.com/9.x/avataaars/svg?seed=You" alt="You" />
+                 <div className={`w-10 h-10 bg-indigo-600 rounded-full border-2 ${game.turn() === 'w' && isSpectator ? 'border-yellow-400 shadow-glow' : 'border-indigo-400'} overflow-hidden transition-all duration-300`}>
+                    <img src={`https://api.dicebear.com/9.x/avataaars/svg?seed=${isSpectator ? "ProGamer" : "You"}`} alt="You" />
                  </div>
              </div>
         </div>
+        
+        <style>{`
+            @keyframes shake {
+                0%, 100% { transform: translateX(0); }
+                10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+                20%, 40%, 60%, 80% { transform: translateX(4px); }
+            }
+            .animate-shake {
+                animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
+            }
+        `}</style>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { GameType, WhotCard, SurveyQuestion } from '../types';
+import { GameType, WhotCard, SurveyQuestion, GameHistoryItem } from '../types';
 
 // Mock WebSocket / Game Server logic
 class GameEngine {
@@ -10,13 +10,6 @@ class GameEngine {
     let idCounter = 0;
 
     shapes.forEach(shape => {
-      // Standard Whot Deck distribution
-      // Circle: 1, 2, 3, 4, 5, 7, 8, 10, 11, 12, 13, 14
-      // Triangle: 1, 2, 3, 4, 5, 7, 8, 10, 11, 12, 13, 14
-      // Cross: 1, 2, 3, 5, 7, 10, 11, 13, 14
-      // Square: 1, 2, 3, 5, 7, 10, 11, 13, 14
-      // Star: 1, 2, 3, 4, 5, 7, 8
-      
       const numbers = [];
       if (shape === 'circle' || shape === 'triangle') numbers.push(1, 2, 3, 4, 5, 7, 8, 10, 11, 12, 13, 14);
       else if (shape === 'cross' || shape === 'square') numbers.push(1, 2, 3, 5, 7, 10, 11, 13, 14);
@@ -27,7 +20,6 @@ class GameEngine {
            id: `card-${idCounter++}`,
            shape,
            number: num,
-           // 1 (Hold On), 2 (Pick 2), 5 (Pick 3), 8 (Suspension), 14 (General Market)
            isSpecial: [1, 2, 5, 8, 14].includes(num)
          });
       });
@@ -114,6 +106,17 @@ class GameEngine {
 
   generateSeed(): string {
     return Math.random().toString(36).substring(7);
+  }
+
+  // MOCK HISTORY
+  getMockHistory(): GameHistoryItem[] {
+      return [
+          { id: '1', gameType: GameType.CHESS, opponent: 'GrandMaster_X', result: 'win', stake: '10', date: '2 mins ago', payout: '20 CELO' },
+          { id: '2', gameType: GameType.WHOT, opponent: 'CardShark99', result: 'loss', stake: '5', date: '1 hour ago' },
+          { id: '3', gameType: GameType.SURVEY, opponent: 'QuizWiz', result: 'win', stake: '1', date: '3 hours ago', payout: '2 CELO' },
+          { id: '4', gameType: GameType.CHESS, opponent: 'Rookie_1', result: 'win', stake: '50', date: '1 day ago', payout: '100 CELO' },
+          { id: '5', gameType: GameType.WHOT, opponent: 'LuckyStrike', result: 'draw', stake: '5', date: '1 day ago', payout: '5 CELO' },
+      ];
   }
 }
 
