@@ -2,21 +2,6 @@ import React, { useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Stars } from '@react-three/drei';
 
-// Fix for TypeScript errors where R3F intrinsic elements are not recognized in the JSX namespace
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      mesh: any;
-      boxGeometry: any;
-      meshStandardMaterial: any;
-      planeGeometry: any;
-      ambientLight: any;
-      spotLight: any;
-      group: any;
-    }
-  }
-}
-
 interface PieceProps {
     position: [number, number, number];
     color: string;

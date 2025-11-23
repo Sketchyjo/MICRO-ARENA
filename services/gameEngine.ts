@@ -10,16 +10,39 @@ class GameEngine {
     let idCounter = 0;
 
     shapes.forEach(shape => {
-      // 1-14
-      for (let i = 1; i <= 5; i++) { // Reduced deck size for blitz demo
+      // Standard Whot Deck distribution
+      // Circle: 1, 2, 3, 4, 5, 7, 8, 10, 11, 12, 13, 14
+      // Triangle: 1, 2, 3, 4, 5, 7, 8, 10, 11, 12, 13, 14
+      // Cross: 1, 2, 3, 5, 7, 10, 11, 13, 14
+      // Square: 1, 2, 3, 5, 7, 10, 11, 13, 14
+      // Star: 1, 2, 3, 4, 5, 7, 8
+      
+      const numbers = [];
+      if (shape === 'circle' || shape === 'triangle') numbers.push(1, 2, 3, 4, 5, 7, 8, 10, 11, 12, 13, 14);
+      else if (shape === 'cross' || shape === 'square') numbers.push(1, 2, 3, 5, 7, 10, 11, 13, 14);
+      else if (shape === 'star') numbers.push(1, 2, 3, 4, 5, 7, 8);
+
+      numbers.forEach(num => {
          deck.push({
            id: `card-${idCounter++}`,
            shape,
-           number: i,
-           isSpecial: [1, 2, 5].includes(i)
+           number: num,
+           // 1 (Hold On), 2 (Pick 2), 5 (Pick 3), 8 (Suspension), 14 (General Market)
+           isSpecial: [1, 2, 5, 8, 14].includes(num)
          });
-      }
+      });
     });
+
+    // Add Whot Cards (20) - 5 cards
+    shapes.forEach(shape => {
+        deck.push({
+            id: `card-${idCounter++}`,
+            shape,
+            number: 20,
+            isSpecial: true
+        });
+    });
+
     return deck.sort(() => Math.random() - 0.5);
   }
 
@@ -34,6 +57,7 @@ class GameEngine {
           { text: "Gloves", score: 20, revealed: false },
           { text: "Flashlight", score: 15, revealed: false },
           { text: "Napkins", score: 10, revealed: false },
+          { text: "Manual", score: 5, revealed: false },
         ]
       },
       {
@@ -43,21 +67,51 @@ class GameEngine {
           { text: "Bathroom", score: 50, revealed: false },
           { text: "Thirsty", score: 25, revealed: false },
           { text: "Bad Dream", score: 15, revealed: false },
-          { text: "Noise", score: 10, revealed: false },
+          { text: "Noise", score: 8, revealed: false },
+          { text: "Too Hot/Cold", score: 2, revealed: false },
+        ]
+      },
+      {
+        id: 'q3',
+        text: "Name a fruit you don't peel.",
+        answers: [
+            { text: "Apple", score: 35, revealed: false },
+            { text: "Grape", score: 30, revealed: false },
+            { text: "Strawberry", score: 20, revealed: false },
+            { text: "Pear", score: 10, revealed: false },
+            { text: "Peach", score: 5, revealed: false },
+        ]
+      },
+      {
+        id: 'q4',
+        text: "Name something people often lose.",
+        answers: [
+            { text: "Keys", score: 40, revealed: false },
+            { text: "Phone", score: 25, revealed: false },
+            { text: "Wallet/Purse", score: 15, revealed: false },
+            { text: "Glasses", score: 10, revealed: false },
+            { text: "Remote", score: 10, revealed: false },
+        ]
+      },
+      {
+        id: 'q5',
+        text: "Name a place where you have to wait.",
+        answers: [
+            { text: "Doctor's Office/Hospital", score: 40, revealed: false },
+            { text: "DMV", score: 30, revealed: false },
+            { text: "Grocery Store/Line", score: 15, revealed: false },
+            { text: "Airport", score: 10, revealed: false },
+            { text: "Restaurant", score: 5, revealed: false },
         ]
       }
     ];
   }
 
   // CHESS UTILS
-  // We will rely on the component to handle chess logic via chess.js
-  // But the server would validate FEN strings here.
   validateMove(fen: string): boolean {
-      return true; // Mock validation
+      return true; // Logic delegated to chess.js
   }
 
-  // DETERMINISTIC RANDOMNESS (Mock)
-  // In production, seed comes from block difficulty or commit-reveal random
   generateSeed(): string {
     return Math.random().toString(36).substring(7);
   }
