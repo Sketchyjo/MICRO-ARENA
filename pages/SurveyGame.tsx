@@ -4,6 +4,7 @@ import { SurveyQuestion, MatchStatus, GameType } from '../types';
 import { useApp } from '../App';
 import { useNavigate } from 'react-router-dom';
 import RulesModal from '../components/RulesModal';
+import { audioService } from '../services/audioService';
 
 export default function SurveyGame() {
   const { setMatchState } = useApp();
@@ -21,6 +22,29 @@ export default function SurveyGame() {
 
   const currentQ = questions[currentQIndex];
 
+  // Game Intro Speech
+  useEffect(() => {
+      // Small delay to allow voices to load
+      const t = setTimeout(() => {
+          audioService.speak("Welcome to Survey Clash! I'm your host. Let's play! First Question.");
+      }, 500);
+      return () => clearTimeout(t);
+  }, []);
+
+  // Speak Question when it changes
+  useEffect(() => {
+    // Delay slightly so it doesn't overlap with the "Welcome" message on first load if timing is tight,
+    // or provides a breath between rounds.
+    const timeout = setTimeout(() => {
+        audioService.speak(currentQ.text);
+    }, 1500);
+    
+    return () => {
+        clearTimeout(timeout);
+        if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    }
+  }, [currentQ]);
+
   // Global Timer
   useEffect(() => {
       if (timer <= 0) {
@@ -35,17 +59,20 @@ export default function SurveyGame() {
   useEffect(() => {
       const interval = setInterval(() => {
           // Hard Mode: Bot scores consistently
-          // Chance to score every 2 seconds
           if (Math.random() > 0.3) {
               const points = Math.floor(Math.random() * 20) + 10;
               setOpponentScore(prev => prev + points);
           }
-      }, 2000); // Faster checks
+      }, 2000); 
       return () => clearInterval(interval);
   }, []);
 
   const handleGameOver = () => {
       const winner = score > opponentScore ? 'local' : (score < opponentScore ? 'opponent' : 'draw');
+      
+      if (winner === 'local') audioService.speak("Game Over! You are the champion!");
+      else audioService.speak("Game Over! The opponent takes it this time.");
+
       setMatchState(s => ({ ...s, status: MatchStatus.REVEALING, winner }));
       navigate('/results');
   };
@@ -57,11 +84,15 @@ export default function SurveyGame() {
       );
 
       if (matchIndex >= 0 && !revealedAnswers.includes(matchIndex)) {
+          // Correct Answer
+          audioService.playBuzzCorrect();
+          audioService.speak("Survey says... " + currentQ.answers[matchIndex].text + "!");
           setRevealedAnswers(prev => [...prev, matchIndex]);
           setScore(s => s + currentQ.answers[matchIndex].score);
           setInput("");
       } else {
-          // Visual feedback for wrong answer?
+          // Wrong Answer
+          audioService.playBuzzWrong();
           setInput("");
       }
 
@@ -69,12 +100,13 @@ export default function SurveyGame() {
       if (revealedAnswers.length + 1 >= currentQ.answers.length) {
           setTimeout(() => {
             if (currentQIndex + 1 < questions.length) {
+                audioService.speak("Clear the board! Next Question!");
                 setCurrentQIndex(prev => prev + 1);
                 setRevealedAnswers([]);
             } else {
                 handleGameOver();
             }
-          }, 1500);
+          }, 3000); // Longer delay to allow "Survey says" speech to finish
       }
   };
 
@@ -103,6 +135,12 @@ export default function SurveyGame() {
             <div className="glass-panel p-6 rounded-xl border-2 border-indigo-500/50 relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 to-purple-500 animate-pulse"></div>
                 <h1 className="text-3xl font-bold">{currentQ.text}</h1>
+                <button 
+                    onClick={() => audioService.speak(currentQ.text)}
+                    className="mt-2 text-xs text-indigo-400 hover:text-indigo-300 uppercase font-bold tracking-widest"
+                >
+                    🔊 Replay Question
+                </button>
             </div>
         </div>
 

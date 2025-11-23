@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useApp } from '../App';
 import { contractService } from '../services/mockContractService';
 import { useNavigate } from 'react-router-dom';
+import { audioService } from '../services/audioService';
 
 export default function Results() {
   const { matchState } = useApp();
@@ -17,12 +18,20 @@ export default function Results() {
         
         // 2. Reveal
         const result = await contractService.revealScore(1001, 100, "salt_123");
-        setStatus(result === 'winner' ? "YOU WON!" : "YOU LOST");
+        
+        if (result === 'winner') {
+            setStatus("YOU WON!");
+            audioService.playWin();
+        } else {
+            setStatus("YOU LOST");
+            audioService.playLoss();
+        }
         
         // 3. Payout
         if (result === 'winner') {
             const hash = await contractService.payoutWinner(1001);
             setTxHash(hash);
+            audioService.playTransactionSuccess();
         }
     };
     

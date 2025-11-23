@@ -5,6 +5,7 @@ import { useApp } from '../App';
 import { MatchStatus, GameType } from '../types';
 import { Chess, PieceSymbol, Color } from 'chess.js';
 import RulesModal from '../components/RulesModal';
+import { audioService } from '../services/audioService';
 
 // --- Captured Piece Component ---
 const CapturedPiecesDisplay = ({ captured, color }: { captured: string[], color: 'w' | 'b' }) => {
@@ -108,6 +109,9 @@ export default function ChessGame() {
   }, [isSpectator, game, fen, gameOverModal.isOpen]); 
 
   const handleGameOver = (winner: 'local' | 'opponent' | 'draw', reason: string = "Game Over") => {
+      if (winner === 'local') audioService.playWin();
+      else if (winner === 'opponent') audioService.playLoss();
+
       setGameOverModal({
           isOpen: true,
           winner,
@@ -232,9 +236,14 @@ export default function ChessGame() {
       }
       
       const move = game.move(bestMoveFound);
-      if (move && (move.flags.includes('c') || move.flags.includes('e'))) {
-          setBoardShake(true);
-          setTimeout(() => setBoardShake(false), 500);
+      if (move) {
+          if (move.flags.includes('c') || move.flags.includes('e')) {
+              setBoardShake(true);
+              audioService.playCapture();
+              setTimeout(() => setBoardShake(false), 500);
+          } else {
+              audioService.playChessMove();
+          }
       }
 
       setFen(game.fen());
@@ -257,6 +266,7 @@ export default function ChessGame() {
       } else if (game.inCheck()) {
           setStatus(game.turn() === 'w' ? "Check! (White)" : "Check! (Black)");
           setBoardShake(true);
+          audioService.playCheck();
           setTimeout(() => setBoardShake(false), 500);
           
           const turn = game.turn();
@@ -294,7 +304,10 @@ export default function ChessGame() {
 
   const onDrop = (sourceSquare: string, targetSquare: string) => {
       if (isSpectator || gameOverModal.isOpen) return false;
-      if (game.turn() !== 'w' || isAiThinking) return false;
+      if (game.turn() !== 'w' || isAiThinking) {
+          audioService.playError();
+          return false;
+      }
 
       const moves = game.moves({ verbose: true });
       const isPromotion = moves.some(m => m.from === sourceSquare && m.to === targetSquare && m.promotion);
@@ -320,12 +333,18 @@ export default function ChessGame() {
 
       try {
           const move = game.move(moveConfig);
-          if (move === null) return false;
+          if (move === null) {
+              audioService.playError();
+              return false;
+          }
 
           // Detect Capture for visual effect
           if (move.flags.includes('c') || move.flags.includes('e')) {
               setBoardShake(true);
+              audioService.playCapture();
               setTimeout(() => setBoardShake(false), 500);
+          } else {
+              audioService.playChessMove();
           }
 
           setFen(game.fen());
@@ -343,7 +362,10 @@ export default function ChessGame() {
           const move = game.move({ from, to, promotion: pieceChar });
           if (move && (move.flags.includes('c') || move.flags.includes('e'))) {
               setBoardShake(true);
+              audioService.playCapture();
               setTimeout(() => setBoardShake(false), 500);
+          } else {
+              audioService.playChessMove();
           }
           setFen(game.fen());
           checkGameStatus();
@@ -484,7 +506,9 @@ export default function ChessGame() {
                           <CapturedPiecesDisplay captured={capturedBlack} color='b' />
                      )}
                  </div>
-                 <div className="text-[10px] text-slate-400 font-mono">White Pieces</div>
+                 <div className="text-left">
+                     <div className="text-[10px] text-slate-400 font-mono">White Pieces</div>
+                 </div>
              </div>
              
              <button 
