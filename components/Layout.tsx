@@ -38,12 +38,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             )}
             
             <WalletConnection 
-              onConnect={() => {
-                // Update local state when wallet connects
-                setTimeout(() => {
-                  connect();
-                }, 100);
-              }}
               className="wallet-header"
             />
           </div>
