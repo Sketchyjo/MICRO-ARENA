@@ -64,6 +64,33 @@
       .animate-pulse-glow {
         animation: pulse-glow 2s infinite;
       }
+      
+      /* Composer Kit Wallet Styles */
+      .wallet-connection button {
+        background: transparent !important;
+        border: none !important;
+        padding: 0 !important;
+      }
+      
+      .wallet-connection [data-composer-kit="connect"] {
+        background: rgb(79 70 229) !important;
+        border: 1px solid rgb(99 102 241) !important;
+        border-radius: 0.5rem !important;
+        padding: 0.5rem 1rem !important;
+        color: white !important;
+        font-weight: 600 !important;
+        transition: all 0.2s !important;
+      }
+      
+      .wallet-connection [data-composer-kit="connect"]:hover {
+        background: rgb(67 56 202) !important;
+        box-shadow: 0 0 15px rgba(79, 70, 229, 0.3) !important;
+      }
+      
+      .wallet-header .wallet-connection [data-composer-kit="connect"] {
+        padding: 0.5rem 1rem !important;
+        font-size: 0.875rem !important;
+      }
     </style>
   <script type="importmap">
 {

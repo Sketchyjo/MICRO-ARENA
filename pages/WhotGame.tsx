@@ -114,10 +114,17 @@ const PlayingCard: React.FC<CardProps> = ({ card, onClick, isPlayable, isHidden,
 };
 
 export default function WhotGame() {
-  const { setMatchState } = useApp();
+  const { wallet, setMatchState } = useApp();
   const navigate = useNavigate();
   const location = useLocation();
   const isSpectator = location.state?.isSpectator || false;
+
+  // Redirect to home if wallet is not connected
+  useEffect(() => {
+    if (!wallet) {
+      navigate('/');
+    }
+  }, [wallet, navigate]);
   
   // Game State
   const [deck, setDeck] = useState<WhotCard[]>([]);

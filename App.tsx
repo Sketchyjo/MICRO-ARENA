@@ -1,6 +1,8 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
 import { HashRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
-import { contractService } from './services/mockContractService';
+import { ComposerKitProvider } from '@composer-kit/ui/core';
+import { celo } from 'viem/chains';
+import { contractService } from './services/contractService';
 import { GameType, MatchState, MatchStatus } from './types';
 
 // Layouts and Pages
@@ -66,7 +68,7 @@ const App: React.FC = () => {
     setMatchState(prev => ({ ...prev, status }));
   };
 
-  return (
+  const appContent = (
     <AppContext.Provider value={{ wallet, connect, matchState, setMatchState, updateStatus }}>
       <HashRouter>
         <Routes>
@@ -82,6 +84,15 @@ const App: React.FC = () => {
         </Routes>
       </HashRouter>
     </AppContext.Provider>
+  );
+
+  return (
+    <ComposerKitProvider 
+      chain={celo}
+      rpcUrl="https://forno.celo.org"
+      colorMode="dark"
+      children={appContent}
+    />
   );
 };
 

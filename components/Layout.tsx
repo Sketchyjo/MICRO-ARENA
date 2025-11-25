@@ -1,6 +1,7 @@
 import React from 'react';
 import { useApp } from '../App';
 import { Link, useLocation } from 'react-router-dom';
+import WalletConnection from './WalletConnection';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -36,24 +37,15 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 </div>
             )}
             
-            {!wallet ? (
-              <button 
-                onClick={connect}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md font-semibold transition-all shadow-[0_0_15px_rgba(79,70,229,0.3)]"
-              >
-                Connect Wallet
-              </button>
-            ) : (
-              <div className="flex items-center gap-3">
-                 <div className="text-right hidden sm:block">
-                     <p className="text-xs text-slate-400">Balance</p>
-                     <p className="text-sm font-mono text-emerald-400">150.50 CELO</p>
-                 </div>
-                 <div className="px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg font-mono text-xs text-slate-300">
-                    {wallet.substring(0, 6)}...{wallet.substring(wallet.length - 4)}
-                 </div>
-              </div>
-            )}
+            <WalletConnection 
+              onConnect={() => {
+                // Update local state when wallet connects
+                setTimeout(() => {
+                  connect();
+                }, 100);
+              }}
+              className="wallet-header"
+            />
           </div>
         </div>
       </header>

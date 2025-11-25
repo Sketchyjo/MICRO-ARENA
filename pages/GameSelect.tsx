@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../App';
 import { GameType, MatchStatus } from '../types';
@@ -6,10 +6,17 @@ import { contractService } from '../services/mockContractService';
 
 export default function GameSelect() {
   const navigate = useNavigate();
-  const { setMatchState, updateStatus } = useApp();
+  const { wallet, setMatchState, updateStatus } = useApp();
   const [selectedGame, setSelectedGame] = useState<GameType | null>(null);
   const [stake, setStake] = useState('1');
   const [isFinding, setIsFinding] = useState(false);
+
+  // Redirect to home if wallet is not connected
+  useEffect(() => {
+    if (!wallet) {
+      navigate('/');
+    }
+  }, [wallet, navigate]);
 
   const games = [
     {

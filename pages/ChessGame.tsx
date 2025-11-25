@@ -27,8 +27,15 @@ const CapturedPiecesDisplay = ({ captured, color }: { captured: string[], color:
 export default function ChessGame() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { setMatchState } = useApp();
+  const { wallet, setMatchState } = useApp();
   const isSpectator = location.state?.isSpectator || false;
+
+  // Redirect to home if wallet is not connected
+  useEffect(() => {
+    if (!wallet) {
+      navigate('/');
+    }
+  }, [wallet, navigate]);
 
   const [timer, setTimer] = useState(600);
   const [game, setGame] = useState(new Chess());

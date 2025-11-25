@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../App';
 import { gameEngine } from '../services/gameEngine';
 import { GameType } from '../types';
+import WalletConnection from '../components/WalletConnection';
 
 export default function Home() {
   const navigate = useNavigate();
@@ -11,7 +12,10 @@ export default function Home() {
   const history = gameEngine.getMockHistory();
 
   const handleEnter = async () => {
-    if (!wallet) await connect();
+    if (!wallet) {
+      // Don't navigate if wallet is not connected
+      return;
+    }
     navigate('/select');
   };
 
@@ -53,15 +57,30 @@ export default function Home() {
                 </p>
                 
                 <div className="flex flex-col sm:flex-row gap-4 justify-center pt-8">
-                    <button 
-                        onClick={handleEnter}
-                        className="px-8 py-4 bg-white text-slate-900 rounded-lg font-bold text-lg hover:bg-indigo-50 transition-colors shadow-[0_0_20px_rgba(255,255,255,0.4)] hover:scale-105 transform"
-                    >
-                        {wallet ? "ENTER ARENA" : "CONNECT WALLET TO PLAY"}
-                    </button>
-                    <button className="px-8 py-4 bg-transparent border border-slate-700 text-white rounded-lg font-bold text-lg hover:bg-slate-800 transition-colors hover:scale-105 transform">
-                        LEADERBOARD
-                    </button>
+                    {wallet ? (
+                        <button 
+                            onClick={handleEnter}
+                            className="px-8 py-4 bg-white text-slate-900 rounded-lg font-bold text-lg hover:bg-indigo-50 transition-colors shadow-[0_0_20px_rgba(255,255,255,0.4)] hover:scale-105 transform"
+                        >
+                            ENTER ARENA
+                        </button>
+                    ) : (
+                        <div className="flex flex-col items-center gap-4">
+                            <p className="text-slate-400 text-sm">Connect your wallet to start playing</p>
+                            <WalletConnection 
+                                onConnect={() => {
+                                    setTimeout(() => {
+                                        connect();
+                                    }, 100);
+                                }}
+                            />
+                        </div>
+                    )}
+                    {wallet && (
+                        <button className="px-8 py-4 bg-transparent border border-slate-700 text-white rounded-lg font-bold text-lg hover:bg-slate-800 transition-colors hover:scale-105 transform">
+                            LEADERBOARD
+                        </button>
+                    )}
                 </div>
 
                 <div className="pt-12 grid grid-cols-1 md:grid-cols-3 gap-6 opacity-80">
@@ -129,12 +148,15 @@ export default function Home() {
                 ) : (
                     <div className="text-center py-20">
                         <p className="text-slate-500 text-lg mb-4">Connect your wallet to view your match history.</p>
-                        <button 
-                            onClick={handleEnter}
-                            className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold"
-                        >
-                            Connect Wallet
-                        </button>
+                        <div className="flex justify-center">
+                            <WalletConnection 
+                                onConnect={() => {
+                                    setTimeout(() => {
+                                        connect();
+                                    }, 100);
+                                }}
+                            />
+                        </div>
                     </div>
                 )}
             </div>
