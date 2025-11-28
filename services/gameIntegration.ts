@@ -77,8 +77,9 @@ class GameIntegrationService {
         // Matchmaking events
         websocketClient.onMatchFound((data) => {
             console.log('🎮 Match found:', data);
+            // The server returns the blockchain match ID, which should already be stored
+            // We just need to update the opponent and status
             this.updateState({
-                matchId: BigInt(data.matchId),
                 opponentAddress: data.opponent,
                 status: MatchStatus.MATCHED,
             });
@@ -155,7 +156,7 @@ class GameIntegrationService {
     async startMatchmaking(gameType: GameType, stake: string): Promise<void> {
         try {
             console.log('🎮 Starting matchmaking:', { gameType, stake, playerAddress: this.gameState.playerAddress });
-            
+
             this.updateState({
                 gameType,
                 stake,
@@ -184,9 +185,9 @@ class GameIntegrationService {
                 status: MatchStatus.SEARCHING,
             });
 
-            // Join matchmaking queue
+            // Join matchmaking queue with blockchain match ID
             console.log('🔍 Joining matchmaking queue via WebSocket...');
-            websocketClient.searchMatch(gameType, stake, this.gameState.playerAddress);
+            websocketClient.searchMatch(gameType, stake, this.gameState.playerAddress, matchId.toString());
         } catch (error: any) {
             this.handleError(`Failed to start matchmaking: ${error.message}`);
             this.updateState({ status: MatchStatus.IDLE });

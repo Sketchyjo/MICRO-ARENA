@@ -85,12 +85,13 @@ export function initializeWebSocket(io: SocketIOServer) {
         });
 
         // Matchmaking events
-        socket.on('matchmaking:search', async (data: { gameType: string; stake: string; playerAddress: string }) => {
+        socket.on('matchmaking:search', async (data: { gameType: string; stake: string; playerAddress: string; blockchainMatchId?: string }) => {
             try {
                 websocketLogger.info(`Received matchmaking:search`, {
                     gameType: data.gameType,
                     stake: data.stake,
                     playerAddress: data.playerAddress,
+                    blockchainMatchId: data.blockchainMatchId,
                     isAuthenticated,
                     socketPlayerAddress: playerAddress
                 });
@@ -110,13 +111,14 @@ export function initializeWebSocket(io: SocketIOServer) {
                     return;
                 }
 
-                websocketLogger.info(`Processing matchmaking search: ${data.gameType} - ${data.stake} cUSD`, { playerAddress });
+                websocketLogger.info(`Processing matchmaking search: ${data.gameType} - ${data.stake} cUSD`, { playerAddress, blockchainMatchId: data.blockchainMatchId });
 
                 const match = await matchmaking.findOrCreateMatch(
                     data.gameType,
                     data.stake,
                     data.playerAddress,
-                    socket.id
+                    socket.id,
+                    data.blockchainMatchId
                 );
 
                 if (match.status === 'found') {

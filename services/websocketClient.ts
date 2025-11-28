@@ -63,14 +63,15 @@ class WebSocketClient {
     /**
      * Search for a match
      */
-    searchMatch(gameType: string, stake: string, playerAddress: string): void {
+    searchMatch(gameType: string, stake: string, playerAddress: string, blockchainMatchId: string): void {
         if (!this.socket) throw new Error('Not connected');
 
-        console.log('🔍 Searching for match:', { gameType, stake, playerAddress });
+        console.log('🔍 Searching for match:', { gameType, stake, playerAddress, blockchainMatchId });
         this.socket.emit('matchmaking:search', {
             gameType,
             stake,
             playerAddress,
+            blockchainMatchId,
         });
     }
 

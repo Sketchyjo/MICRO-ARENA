@@ -8,6 +8,7 @@ interface MatchmakingQueue {
     socketId: string;
     timestamp: number;
     eloRating: number;
+    blockchainMatchId?: string;
 }
 
 interface Match {
@@ -34,7 +35,8 @@ export class MatchmakingService {
         gameType: string,
         stake: string,
         playerAddress: string,
-        socketId: string
+        socketId: string,
+        blockchainMatchId?: string
     ): Promise<Match> {
         const queueKey = `${gameType}:${stake}`;
 
@@ -82,7 +84,8 @@ export class MatchmakingService {
         if (bestMatch) {
             // Found a match!
             const waiting = gameQueue.splice(bestMatch.index, 1)[0];
-            const matchId = `match_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            // Use the blockchain match ID from the waiting player
+            const matchId = waiting.blockchainMatchId || `match_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
             const match: Match = {
                 matchId,
@@ -125,13 +128,15 @@ export class MatchmakingService {
             socketId,
             timestamp: Date.now(),
             eloRating: playerElo,
+            blockchainMatchId,
         });
 
         matchmakingLogger.info(`Player added to queue: ${playerAddress}`, {
             gameType,
             stake,
             eloRating: playerElo,
-            queueSize: gameQueue.length
+            queueSize: gameQueue.length,
+            blockchainMatchId
         });
 
         return {
@@ -186,7 +191,7 @@ export class MatchmakingService {
             const initialLength = gameQueue.length;
             const filtered = gameQueue.filter(q => now - q.timestamp < QUEUE_TIMEOUT);
             const cleaned = initialLength - filtered.length;
-            
+
             if (cleaned > 0) {
                 totalCleaned += cleaned;
                 this.queue.set(queueKey, filtered);
