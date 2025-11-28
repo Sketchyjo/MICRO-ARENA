@@ -2,6 +2,8 @@ import React, { useState, useEffect, createContext, useContext } from 'react';
 import { HashRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { ComposerKitProvider } from '@composer-kit/ui/core';
 import { celoSepolia } from 'viem/chains';
+import { http } from 'wagmi';
+import { injected } from 'wagmi/connectors';
 import { contractService } from './services/contractService';
 import { GameType, MatchState, MatchStatus } from './types';
 
@@ -130,6 +132,14 @@ const AppContent: React.FC = () => {
   );
 };
 
+const config = {
+  chains: [celoSepolia],
+  transports: {
+    [celoSepolia.id]: http("https://celo-sepolia.g.alchemy.com/v2/zSVVVZsFAtdutTtjLmf12")
+  },
+  connectors: [injected()]
+} as const;
+
 // Main App component that wraps AppContent with ComposerKitProvider
 const App: React.FC = () => {
   return (
@@ -137,6 +147,7 @@ const App: React.FC = () => {
       chain={celoSepolia}
       rpcUrl="https://celo-sepolia.g.alchemy.com/v2/zSVVVZsFAtdutTtjLmf12"
       colorMode="dark"
+      config={config}
     >
       <AppContent />
     </ComposerKitProvider>

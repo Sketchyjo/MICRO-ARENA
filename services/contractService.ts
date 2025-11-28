@@ -25,10 +25,6 @@ declare global {
     }
 }
 
-// Define Celo Sepolia testnet
-// Celo Sepolia is imported from viem/chains
-const celoSepoliaChain = celoSepolia;
-
 // cUSD token address on Celo Sepolia testnet
 const CUSD_ADDRESS = '0xdE9e4C3ce781b4bA68120d6261cbad65ce0aB00b';
 
@@ -325,6 +321,53 @@ class ContractService {
     }
 
     /**
+     * Ensure wallet is on Celo Sepolia
+     */
+    // private async ensureCorrectChain(): Promise<void> {
+    //     if (!window.ethereum) return;
+
+    //     try {
+    //         const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+    //         console.log("🔍 Detected Chain ID:", chainId);
+
+    //         // Normalize to lowercase for comparison
+    //         const normalizedChainId = typeof chainId === 'string' ? chainId.toLowerCase() : chainId;
+    //         const expectedChainId = '0xaa07cc'; // 11142220
+
+    //         if (normalizedChainId !== expectedChainId) {
+    //             console.log(`⚠️ Chain mismatch! Detected: ${normalizedChainId}, Expected: ${expectedChainId}`);
+
+    //             if (normalizedChainId === '0xa4ec') { // 42220
+    //                 console.error("❌ You are connected to Celo Mainnet (42220). Switching to Celo Sepolia (11142220)...");
+    //             } else {
+    //                 console.log('Switching to Celo Sepolia...');
+    //             }
+
+    //             await this.switchToCeloSepolia();
+
+    //             // Verify switch
+    //             const newChainId = await window.ethereum.request({ method: 'eth_chainId' });
+    //             console.log("🔍 New Chain ID after switch:", newChainId);
+
+    //             // ALWAYS Re-initialize wallet client after a switch to ensure it has the correct chain context
+    //             if (this.account) {
+    //                 console.log("Re-initializing wallet client with Celo Sepolia chain...");
+    //                 this.walletClient = createWalletClient({
+    //                     account: this.account,
+    //                     chain: celoSepolia,
+    //                     transport: custom(window.ethereum),
+    //                 });
+    //             }
+    //         } else {
+    //             console.log("✅ Chain ID is correct:", normalizedChainId);
+    //         }
+    //     } catch (error) {
+    //         console.warn('Failed to check/switch chain:', error);
+    //         // Don't throw, let the transaction try and fail if it must
+    //     }
+    // }
+
+    /**
      * Start listening for contract events
      */
     private startEventListening(): void {
@@ -481,7 +524,6 @@ class ContractService {
                 abi: ERC20_ABI,
                 functionName: 'approve',
                 args: [this.contractAddress as `0x${string}`, amountWei],
-                chain: celoSepolia,
                 account: this.account,
             });
 
@@ -514,7 +556,6 @@ class ContractService {
                 abi: MICRO_ARENA_ABI,
                 functionName: 'createMatch',
                 args: [gameType, stakeWei],
-                chain: celoSepolia,
                 account: this.account,
             });
 
@@ -569,7 +610,6 @@ class ContractService {
                 abi: MICRO_ARENA_ABI,
                 functionName: 'joinMatch',
                 args: [matchId],
-                chain: celoSepolia,
                 account: this.account,
             });
 
@@ -595,7 +635,6 @@ class ContractService {
                 abi: MICRO_ARENA_ABI,
                 functionName: 'cancelMatch',
                 args: [matchId],
-                chain: celoSepolia,
                 account: this.account,
             });
 
@@ -615,6 +654,7 @@ class ContractService {
     async commitScore(matchId: bigint, score: number, salt: string): Promise<{ txHash: string; commitBlock: bigint }> {
         if (!this.walletClient || !this.account) throw new Error('Wallet not connected');
 
+
         try {
             // Get current block number
             const blockNumber = await this.publicClient.getBlockNumber();
@@ -627,7 +667,6 @@ class ContractService {
                 abi: MICRO_ARENA_ABI,
                 functionName: 'commitScore',
                 args: [matchId, scoreHash],
-                chain: celoSepolia,
                 account: this.account,
             });
 
@@ -647,6 +686,7 @@ class ContractService {
     async revealScore(matchId: bigint, score: number, salt: string, commitBlock: bigint): Promise<string> {
         if (!this.walletClient || !this.account) throw new Error('Wallet not connected');
 
+
         try {
             const saltBytes = `0x${salt.padStart(64, '0')}` as `0x${string}`;
 
@@ -655,7 +695,6 @@ class ContractService {
                 abi: MICRO_ARENA_ABI,
                 functionName: 'revealScore',
                 args: [matchId, BigInt(score), saltBytes, commitBlock],
-                chain: celoSepolia,
                 account: this.account,
             });
 
@@ -681,7 +720,6 @@ class ContractService {
                 abi: MICRO_ARENA_ABI,
                 functionName: 'claimTimeout',
                 args: [matchId],
-                chain: celoSepolia,
                 account: this.account,
             });
 
