@@ -546,10 +546,26 @@ class ContractService {
         if (!this.walletClient || !this.account) throw new Error('Wallet not connected');
 
         try {
-            // First approve cUSD
-            await this.approveCUSD(stake);
-
             const stakeWei = parseUnits(stake, 18);
+
+            // Check balance first
+            const balance = await this.getCUSDBalance();
+            const balanceWei = parseUnits(balance, 18);
+            if (balanceWei < stakeWei) {
+                throw new Error(`Insufficient cUSD balance. You have ${balance} cUSD but need ${stake} cUSD`);
+            }
+
+            // Check current allowance
+            const currentAllowance = await this.getCUSDAllowance();
+            const allowanceWei = parseUnits(currentAllowance, 18);
+            
+            // Only approve if needed
+            if (allowanceWei < stakeWei) {
+                console.log(`Approving ${stake} cUSD...`);
+                await this.approveCUSD(stake);
+            } else {
+                console.log('✅ Sufficient allowance already exists');
+            }
 
             const hash = await this.walletClient.writeContract({
                 address: this.contractAddress as `0x${string}`,
@@ -591,6 +607,18 @@ class ContractService {
             return { matchId, txHash: hash };
         } catch (error: any) {
             console.error('Failed to create match:', error);
+            
+            // Provide more helpful error messages
+            if (error.message?.includes('insufficient funds')) {
+                throw new Error('Insufficient CELO for gas fees. Get testnet CELO from https://faucet.celo.org');
+            }
+            if (error.message?.includes('InsufficientAllowance')) {
+                throw new Error('Failed to approve cUSD. Please try again.');
+            }
+            if (error.message?.includes('TransferFailed')) {
+                throw new Error('cUSD transfer failed. Check your balance and try again.');
+            }
+            
             throw new Error(`Match creation failed: ${error.message || 'Unknown error'}`);
         }
     }
@@ -602,8 +630,26 @@ class ContractService {
         if (!this.walletClient || !this.account) throw new Error('Wallet not connected');
 
         try {
-            // First approve cUSD
-            await this.approveCUSD(stake);
+            const stakeWei = parseUnits(stake, 18);
+
+            // Check balance first
+            const balance = await this.getCUSDBalance();
+            const balanceWei = parseUnits(balance, 18);
+            if (balanceWei < stakeWei) {
+                throw new Error(`Insufficient cUSD balance. You have ${balance} cUSD but need ${stake} cUSD`);
+            }
+
+            // Check current allowance
+            const currentAllowance = await this.getCUSDAllowance();
+            const allowanceWei = parseUnits(currentAllowance, 18);
+            
+            // Only approve if needed
+            if (allowanceWei < stakeWei) {
+                console.log(`Approving ${stake} cUSD...`);
+                await this.approveCUSD(stake);
+            } else {
+                console.log('✅ Sufficient allowance already exists');
+            }
 
             const hash = await this.walletClient.writeContract({
                 address: this.contractAddress as `0x${string}`,
@@ -619,6 +665,18 @@ class ContractService {
             return hash;
         } catch (error: any) {
             console.error('Failed to join match:', error);
+            
+            // Provide more helpful error messages
+            if (error.message?.includes('insufficient funds')) {
+                throw new Error('Insufficient CELO for gas fees. Get testnet CELO from https://faucet.celo.org');
+            }
+            if (error.message?.includes('InsufficientAllowance')) {
+                throw new Error('Failed to approve cUSD. Please try again.');
+            }
+            if (error.message?.includes('TransferFailed')) {
+                throw new Error('cUSD transfer failed. Check your balance and try again.');
+            }
+            
             throw new Error(`Join match failed: ${error.message || 'Unknown error'}`);
         }
     }

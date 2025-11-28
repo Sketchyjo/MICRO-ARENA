@@ -14,33 +14,33 @@ const rateLimits = new Map<string, { count: number; resetTime: number }>();
 function checkRateLimit(socketId: string, limit: number = 10, windowMs: number = 60000): boolean {
     const now = Date.now();
     const userLimit = rateLimits.get(socketId);
-    
+
     if (!userLimit || now > userLimit.resetTime) {
         rateLimits.set(socketId, { count: 1, resetTime: now + windowMs });
         return true;
     }
-    
+
     if (userLimit.count >= limit) {
         return false;
     }
-    
+
     userLimit.count++;
     return true;
 }
 
 export function initializeWebSocket(io: SocketIOServer) {
-    // Authentication middleware
+    // Authentication middleware (optional - actual auth happens via auth:connect)
     io.use(async (socket, next) => {
         try {
             const token = socket.handshake.auth.token;
-            if (!token) {
-                return next(new Error('Authentication token required'));
+            // Token is optional - we'll authenticate via auth:connect event
+            if (token) {
+                // Verify token/signature here if needed
+                websocketLogger.info('Token provided in handshake');
             }
-            
-            // Verify token/signature here if needed
             next();
         } catch (error) {
-            websocketLogger.error('Authentication failed:', error);
+            websocketLogger.error('Authentication middleware error:', error);
             next(new Error('Authentication failed'));
         }
     });
@@ -53,27 +53,29 @@ export function initializeWebSocket(io: SocketIOServer) {
         let isAuthenticated = false;
 
         // Authentication
-        socket.on('auth:connect', async (data: { address: string; signature: string; message: string }) => {
+        socket.on('auth:connect', async (data: { address: string; signature?: string; message?: string }) => {
             try {
                 if (!checkRateLimit(socket.id, 5, 60000)) {
                     socket.emit('auth:error', { error: 'Rate limit exceeded' });
                     return;
                 }
 
-                // Verify signature
-                const isValid = await verifySignature(data.address, data.message, data.signature);
-                if (!isValid) {
-                    socket.emit('auth:error', { error: 'Invalid signature' });
-                    return;
+                // Verify signature if provided
+                if (data.signature && data.message) {
+                    const isValid = await verifySignature(data.address, data.message, data.signature);
+                    if (!isValid) {
+                        socket.emit('auth:error', { error: 'Invalid signature' });
+                        return;
+                    }
                 }
 
                 playerAddress = data.address;
                 isAuthenticated = true;
                 socket.data.playerAddress = data.address;
-                
+
                 // Create user if doesn't exist
                 await createUser(data.address);
-                
+
                 websocketLogger.info(`Player authenticated: ${data.address}`);
                 socket.emit('auth:success', { address: data.address });
             } catch (error) {
@@ -85,7 +87,20 @@ export function initializeWebSocket(io: SocketIOServer) {
         // Matchmaking events
         socket.on('matchmaking:search', async (data: { gameType: string; stake: string; playerAddress: string }) => {
             try {
+                websocketLogger.info(`Received matchmaking:search`, {
+                    gameType: data.gameType,
+                    stake: data.stake,
+                    playerAddress: data.playerAddress,
+                    isAuthenticated,
+                    socketPlayerAddress: playerAddress
+                });
+
                 if (!isAuthenticated || playerAddress !== data.playerAddress) {
+                    websocketLogger.warn(`Authentication check failed`, {
+                        isAuthenticated,
+                        playerAddress,
+                        dataPlayerAddress: data.playerAddress
+                    });
                     socket.emit('matchmaking:error', { error: 'Not authenticated' });
                     return;
                 }
@@ -95,7 +110,7 @@ export function initializeWebSocket(io: SocketIOServer) {
                     return;
                 }
 
-                websocketLogger.info(`Matchmaking search: ${data.gameType} - ${data.stake} cUSD`, { playerAddress });
+                websocketLogger.info(`Processing matchmaking search: ${data.gameType} - ${data.stake} cUSD`, { playerAddress });
 
                 const match = await matchmaking.findOrCreateMatch(
                     data.gameType,

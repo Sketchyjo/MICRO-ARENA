@@ -65,33 +65,18 @@ export class MatchmakingService {
 
         const gameQueue = this.queue.get(queueKey)!;
 
-        // Try to find a match with similar stake and ELO
-        const stakeNum = parseFloat(stake);
-        const stakeTolerance = stakeNum * 0.1;
-        const eloTolerance = 200; // ELO difference tolerance
-
+        // Try to find any available match (simplified for instant matching)
         let bestMatch: { index: number; score: number } | null = null;
 
         for (let i = 0; i < gameQueue.length; i++) {
             const waiting = gameQueue[i];
-            const waitingStake = parseFloat(waiting.stake);
 
             // Don't match with self
             if (waiting.playerAddress === playerAddress) continue;
 
-            // Check stake similarity
-            if (Math.abs(waitingStake - stakeNum) <= stakeTolerance) {
-                // Calculate match score (lower is better)
-                const stakeScore = Math.abs(waitingStake - stakeNum) / stakeNum;
-                const eloScore = Math.abs(waiting.eloRating - playerElo) / 400; // Normalize ELO difference
-                const timeScore = (Date.now() - waiting.timestamp) / (5 * 60 * 1000); // Waiting time bonus
-                
-                const totalScore = stakeScore + eloScore - timeScore;
-
-                if (!bestMatch || totalScore < bestMatch.score) {
-                    bestMatch = { index: i, score: totalScore };
-                }
-            }
+            // Take first available match
+            bestMatch = { index: i, score: 0 };
+            break;
         }
 
         if (bestMatch) {

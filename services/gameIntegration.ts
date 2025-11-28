@@ -154,6 +154,8 @@ class GameIntegrationService {
      */
     async startMatchmaking(gameType: GameType, stake: string): Promise<void> {
         try {
+            console.log('🎮 Starting matchmaking:', { gameType, stake, playerAddress: this.gameState.playerAddress });
+            
             this.updateState({
                 gameType,
                 stake,
@@ -162,11 +164,13 @@ class GameIntegrationService {
 
             // Check cUSD balance
             const balance = await contractService.getCUSDBalance();
+            console.log('💰 Balance check:', balance, 'cUSD');
             if (parseFloat(balance) < parseFloat(stake)) {
                 throw new Error(`Insufficient cUSD balance. You have ${balance} cUSD but need ${stake} cUSD`);
             }
 
             // Create match on-chain
+            console.log('📝 Creating match on blockchain...');
             const { matchId, txHash } = await contractService.createMatch(
                 this.gameTypeToNumber(gameType),
                 stake
@@ -181,6 +185,7 @@ class GameIntegrationService {
             });
 
             // Join matchmaking queue
+            console.log('🔍 Joining matchmaking queue via WebSocket...');
             websocketClient.searchMatch(gameType, stake, this.gameState.playerAddress);
         } catch (error: any) {
             this.handleError(`Failed to start matchmaking: ${error.message}`);

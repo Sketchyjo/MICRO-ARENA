@@ -15,6 +15,9 @@ class WebSocketClient {
      */
     connect(playerAddress: string): Promise<void> {
         return new Promise((resolve, reject) => {
+            console.log('🔌 Connecting to WebSocket:', this.serverUrl);
+            console.log('🔌 Player address:', playerAddress);
+
             this.socket = io(this.serverUrl, {
                 transports: ['websocket'],
                 reconnection: true,
@@ -23,20 +26,27 @@ class WebSocketClient {
             });
 
             this.socket.on('connect', () => {
-                console.log('✅ WebSocket connected');
+                console.log('✅ WebSocket connected to', this.serverUrl);
+                console.log('✅ Socket ID:', this.socket?.id);
                 this.reconnectAttempts = 0;
 
                 // Authenticate
+                console.log('🔐 Authenticating with address:', playerAddress);
                 this.socket!.emit('auth:connect', { address: playerAddress });
                 resolve();
             });
 
             this.socket.on('auth:success', (data) => {
-                console.log('✅ Authenticated:', data.address);
+                console.log('✅ Authenticated successfully:', data.address);
+            });
+
+            this.socket.on('auth:error', (data) => {
+                console.error('❌ Authentication error:', data.error);
             });
 
             this.socket.on('connect_error', (error) => {
                 console.error('❌ WebSocket connection error:', error);
+                console.error('❌ Error message:', error.message);
                 this.reconnectAttempts++;
 
                 if (this.reconnectAttempts >= this.maxReconnectAttempts) {
@@ -56,6 +66,7 @@ class WebSocketClient {
     searchMatch(gameType: string, stake: string, playerAddress: string): void {
         if (!this.socket) throw new Error('Not connected');
 
+        console.log('🔍 Searching for match:', { gameType, stake, playerAddress });
         this.socket.emit('matchmaking:search', {
             gameType,
             stake,
