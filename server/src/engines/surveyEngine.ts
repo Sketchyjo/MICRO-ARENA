@@ -69,7 +69,7 @@ export class SurveyEngine {
         const newState = { ...gameState };
         
         const answer = newState.currentQuestion.answers.find(
-            a => a.text.toLowerCase().includes(guess.toLowerCase()) && 
+            (a: { text: string; points: number }) => a.text.toLowerCase().includes(guess.toLowerCase()) && 
             !newState.revealedAnswers.includes(a.text)
         );
         

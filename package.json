@@ -21,7 +21,8 @@
     "react-router-dom": "^7.9.6",
     "socket.io-client": "^4.6.1",
     "three": "^0.181.2",
-    "viem": "^2.7.0"
+    "viem": "^2.7.0",
+    "wagmi": "^3.0.1"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

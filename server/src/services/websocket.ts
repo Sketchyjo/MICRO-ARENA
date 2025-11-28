@@ -121,9 +121,9 @@ export function initializeWebSocket(io: SocketIOServer) {
                     });
 
                     // Initialize game state
-                    const gameState = gameStateManager.createGameState(match.matchId!, match.gameType);
+                    const gameState = await gameStateManager.createGameState(match.matchId!, match.gameType);
                     gameState.player1 = match.player1;
-                    gameState.player2 = match.player2;
+                    gameState.player2 = match.player2!;
                 } else {
                     socket.emit('matchmaking:searching', {
                         message: 'Searching for opponent...',
@@ -155,10 +155,10 @@ export function initializeWebSocket(io: SocketIOServer) {
                     return;
                 }
 
-                const { matchId, move, playerAddress } = data;
+                const { matchId, move, playerAddress: movePlayerAddress } = data;
 
                 // Validate and apply move
-                const result = gameStateManager.applyMove(matchId, playerAddress, move);
+                const result = await gameStateManager.applyMove(matchId, movePlayerAddress, move);
 
                 if (result.valid) {
                     // Broadcast move to opponent
@@ -209,8 +209,8 @@ export function initializeWebSocket(io: SocketIOServer) {
         });
 
         // Spectator events
-        socket.on('spectator:join', (data: { matchId: string }) => {
-            const gameState = gameStateManager.getGameState(data.matchId);
+        socket.on('spectator:join', async (data: { matchId: string }) => {
+            const gameState = await gameStateManager.getGameState(data.matchId);
             if (gameState) {
                 socket.join(`match:${data.matchId}`);
                 socket.emit('spectator:state', { gameState });

@@ -42,7 +42,7 @@ export class Connect4Engine {
         const { column } = move;
         const newState = { 
             ...gameState, 
-            board: gameState.board.map(row => [...row]),
+            board: gameState.board.map((row: any[]) => [...row]),
             moves: [...gameState.moves]
         };
         

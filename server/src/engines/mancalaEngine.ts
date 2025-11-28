@@ -64,5 +64,70 @@ export class MancalaEngine {
         
         // Check for capture
         const isPlayerSide = (newState.currentPlayer === 1 && currentPos >= 0 && currentPos <= 5) ||
-                            (newState.currentPlayer === 2 && currentPos >= 7 && currentPos <= 12);\n        
-        if (isPlayerSide && newState.board[currentPos] === 1) {\n            const oppositePos = 12 - currentPos;\n            if (newState.board[oppositePos] > 0) {\n                const capturedStones = newState.board[oppositePos] + 1;\n                newState.board[oppositePos] = 0;\n                newState.board[currentPos] = 0;\n                \n                if (newState.currentPlayer === 1) {\n                    newState.board[6] += capturedStones;\n                } else {\n                    newState.board[13] += capturedStones;\n                }\n            }\n        }\n        \n        // Check for extra turn (landing in own store)\n        const ownStore = newState.currentPlayer === 1 ? 6 : 13;\n        if (currentPos !== ownStore) {\n            newState.currentPlayer = newState.currentPlayer === 1 ? 2 : 1;\n        }\n        \n        newState.lastMove = { pit, player: playerAddress, timestamp: Date.now() };\n        \n        return newState;\n    }\n\n    checkCompletion(gameState: any): { isComplete: boolean; scores?: any } {\n        // Check if either side is empty\n        const player1Side = gameState.board.slice(0, 6).every(pit => pit === 0);\n        const player2Side = gameState.board.slice(7, 13).every(pit => pit === 0);\n        \n        if (player1Side || player2Side) {\n            // Move remaining stones to respective stores\n            const finalBoard = [...gameState.board];\n            \n            if (player1Side) {\n                const remainingStones = finalBoard.slice(7, 13).reduce((sum, stones) => sum + stones, 0);\n                finalBoard[13] += remainingStones;\n                for (let i = 7; i < 13; i++) finalBoard[i] = 0;\n            }\n            \n            if (player2Side) {\n                const remainingStones = finalBoard.slice(0, 6).reduce((sum, stones) => sum + stones, 0);\n                finalBoard[6] += remainingStones;\n                for (let i = 0; i < 6; i++) finalBoard[i] = 0;\n            }\n            \n            const player1Score = finalBoard[6];\n            const player2Score = finalBoard[13];\n            \n            return {\n                isComplete: true,\n                scores: { player1: player1Score, player2: player2Score }\n            };\n        }\n        \n        return { isComplete: false };\n    }\n\n    assignPlayers(gameState: any, player1: string, player2: string) {\n        gameState.player1 = player1;\n        gameState.player2 = player2;\n        return gameState;\n    }\n}
+                            (newState.currentPlayer === 2 && currentPos >= 7 && currentPos <= 12);
+        
+        if (isPlayerSide && newState.board[currentPos] === 1) {
+            const oppositePos = 12 - currentPos;
+            if (newState.board[oppositePos] > 0) {
+                const capturedStones = newState.board[oppositePos] + 1;
+                newState.board[oppositePos] = 0;
+                newState.board[currentPos] = 0;
+                
+                if (newState.currentPlayer === 1) {
+                    newState.board[6] += capturedStones;
+                } else {
+                    newState.board[13] += capturedStones;
+                }
+            }
+        }
+        
+        // Check for extra turn (landing in own store)
+        const ownStore = newState.currentPlayer === 1 ? 6 : 13;
+        if (currentPos !== ownStore) {
+            newState.currentPlayer = newState.currentPlayer === 1 ? 2 : 1;
+        }
+        
+        newState.lastMove = { pit, player: playerAddress, timestamp: Date.now() };
+        
+        return newState;
+    }
+
+    checkCompletion(gameState: any): { isComplete: boolean; scores?: any } {
+        // Check if either side is empty
+        const player1Side = gameState.board.slice(0, 6).every((pit: number) => pit === 0);
+        const player2Side = gameState.board.slice(7, 13).every((pit: number) => pit === 0);
+        
+        if (player1Side || player2Side) {
+            // Move remaining stones to respective stores
+            const finalBoard = [...gameState.board];
+            
+            if (player1Side) {
+                const remainingStones = finalBoard.slice(7, 13).reduce((sum: number, stones: number) => sum + stones, 0);
+                finalBoard[13] += remainingStones;
+                for (let i = 7; i < 13; i++) finalBoard[i] = 0;
+            }
+            
+            if (player2Side) {
+                const remainingStones = finalBoard.slice(0, 6).reduce((sum: number, stones: number) => sum + stones, 0);
+                finalBoard[6] += remainingStones;
+                for (let i = 0; i < 6; i++) finalBoard[i] = 0;
+            }
+            
+            const player1Score = finalBoard[6];
+            const player2Score = finalBoard[13];
+            
+            return {
+                isComplete: true,
+                scores: { player1: player1Score, player2: player2Score }
+            };
+        }
+        
+        return { isComplete: false };
+    }
+
+    assignPlayers(gameState: any, player1: string, player2: string) {
+        gameState.player1 = player1;
+        gameState.player2 = player2;
+        return gameState;
+    }
+}

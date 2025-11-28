@@ -1,7 +1,7 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
 import { HashRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { ComposerKitProvider } from '@composer-kit/ui/core';
-import { celo } from 'viem/chains';
+import { celoSepolia } from 'viem/chains';
 import { contractService } from './services/contractService';
 import { GameType, MatchState, MatchStatus } from './types';
 
@@ -16,6 +16,8 @@ import MancalaGame from './pages/MancalaGame';
 import Connect4Game from './pages/Connect4Game';
 import WordleGame from './pages/WordleGame';
 import Results from './pages/Results';
+
+import { gameIntegration } from './services/gameIntegration';
 
 // --- Context ---
 interface AppContextType {
@@ -48,27 +50,68 @@ const initialMatchState: MatchState = {
   winner: null,
 };
 
-const App: React.FC = () => {
+// AppContent component
+const AppContent: React.FC = () => {
   const [wallet, setWallet] = useState<string | null>(null);
   const [matchState, setMatchState] = useState<MatchState>(initialMatchState);
 
-  const connect = async () => {
-    const address = await contractService.connectWallet();
-    setWallet(address);
-    setMatchState(prev => ({
-      ...prev,
-      players: {
-        ...prev.players,
-        local: { ...prev.players.local, address }
+  // Listen for wallet connection changes from window.ethereum
+  useEffect(() => {
+    const checkWalletConnection = async () => {
+      if (typeof window.ethereum !== 'undefined') {
+        try {
+          const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+          if (accounts && accounts.length > 0 && accounts[0] !== wallet) {
+            console.log('✅ Wallet already connected:', accounts[0]);
+            setWallet(accounts[0]);
+            try {
+              await gameIntegration.initialize(accounts[0]);
+            } catch (error) {
+              console.error('Failed to initialize game integration:', error);
+            }
+          }
+        } catch (error) {
+          console.error('Error checking wallet connection:', error);
+        }
       }
-    }));
+    };
+
+    checkWalletConnection();
+
+    // Listen for account changes
+    if (typeof window.ethereum !== 'undefined' && window.ethereum.on) {
+      const handleAccountsChanged = (accounts: string[]) => {
+        if (accounts.length > 0) {
+          console.log('✅ Wallet connected:', accounts[0]);
+          setWallet(accounts[0]);
+          gameIntegration.initialize(accounts[0]).catch(console.error);
+        } else {
+          console.log('❌ Wallet disconnected');
+          setWallet(null);
+        }
+      };
+
+      window.ethereum.on('accountsChanged', handleAccountsChanged);
+
+      return () => {
+        if (window.ethereum.removeListener) {
+          window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
+        }
+      };
+    }
+  }, []);
+
+  const connect = async () => {
+    const connectedAddress = await contractService.connectWallet();
+    await gameIntegration.initialize(connectedAddress);
+    setWallet(connectedAddress);
   };
 
   const updateStatus = (status: MatchStatus) => {
     setMatchState(prev => ({ ...prev, status }));
   };
 
-  const appContent = (
+  return (
     <AppContext.Provider value={{ wallet, connect, matchState, setMatchState, updateStatus }}>
       <HashRouter>
         <Routes>
@@ -85,14 +128,18 @@ const App: React.FC = () => {
       </HashRouter>
     </AppContext.Provider>
   );
+};
 
+// Main App component that wraps AppContent with ComposerKitProvider
+const App: React.FC = () => {
   return (
-    <ComposerKitProvider 
-      chain={celo}
-      rpcUrl="https://forno.celo.org"
+    <ComposerKitProvider
+      chain={celoSepolia}
+      rpcUrl="https://celo-sepolia.g.alchemy.com/v2/zSVVVZsFAtdutTtjLmf12"
       colorMode="dark"
-      children={appContent}
-    />
+    >
+      <AppContent />
+    </ComposerKitProvider>
   );
 };
 
