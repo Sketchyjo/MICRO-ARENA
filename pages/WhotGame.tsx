@@ -258,10 +258,7 @@ export default function WhotGame() {
                     triggerEffectPopup("MARKET", "bg-purple-500");
                 }
 
-                // Check for opponent win
-                if (serverGameState?.player1Hand?.length === 0 || serverGameState?.player2Hand?.length === 0) {
-                    handleGameEnd('opponent');
-                }
+                // Server will send game:complete event if game ended
             } else if (move.type === 'DRAW_CARD') {
                 // Opponent drew cards - add placeholder cards to their hand
                 const count = move.count || 1;
@@ -367,6 +364,42 @@ export default function WhotGame() {
             websocketClient.socket?.off('game:state_update', handleStateUpdate);
         };
     }, [gameState?.matchId, gameState?.isPlayer1, turn, localHand.length, opponentHand.length, pendingPickup, requiredShape]);
+
+    // Listen for game completion event from server
+    useEffect(() => {
+        if (!gameState?.matchId) return;
+
+        const handleGameComplete = (data: any) => {
+            console.log('🏆 Game complete event received:', data);
+            
+            // Determine if local player won based on scores
+            const isPlayer1 = (window as any).__isPlayer1 ?? gameState?.isPlayer1;
+            const myScore = isPlayer1 ? data.scores?.player1 : data.scores?.player2;
+            const opponentScore = isPlayer1 ? data.scores?.player2 : data.scores?.player1;
+            
+            const winner = myScore > opponentScore ? 'local' : 'opponent';
+            
+            // Calculate final score for submission
+            const score = myScore || calculateScore(winner);
+            setFinalScore(score);
+            setMessage(winner === 'local' ? "🎉 You Won!" : "😔 You Lost");
+            
+            if (winner === 'local') {
+                audioService.playWin();
+            } else {
+                audioService.playLose();
+            }
+            
+            // Show score submission modal
+            setShowScoreSubmission(true);
+        };
+
+        websocketClient.socket?.on('game:complete', handleGameComplete);
+
+        return () => {
+            websocketClient.socket?.off('game:complete', handleGameComplete);
+        };
+    }, [gameState?.matchId, gameState?.isPlayer1]);
 
     // Initialization
     const initializeGame = () => {
@@ -640,11 +673,6 @@ export default function WhotGame() {
         setLocalHand(prev => prev.filter(c => c.id !== card.id));
         setDiscardPile(prev => [...prev, card]);
 
-        if (localHand.length === 1) {
-            handleGameEnd('local');
-            return;
-        }
-
         // WHOT card - wait for shape selection before sending to server
         if (card.number === 20) {
             audioService.playSpecialCard();
@@ -659,6 +687,20 @@ export default function WhotGame() {
                 card: { shape: card.shape, number: card.number },
                 requiredShape: null
             });
+            
+            // If this was the last card, server will send game:complete event
+            // Don't call handleGameEnd locally - wait for server confirmation
+            if (localHand.length === 1) {
+                setMessage("🎉 You Won! Waiting for confirmation...");
+                audioService.playWin();
+                return;
+            }
+        } else {
+            // Single player mode - handle locally
+            if (localHand.length === 1) {
+                handleGameEnd('local');
+                return;
+            }
         }
 
         executeCardEffect(card, 'local');

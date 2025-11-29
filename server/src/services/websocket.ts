@@ -302,10 +302,13 @@ export function initializeWebSocket(io: SocketIOServer) {
 
                     // Check if game is complete
                     if (result.gameComplete) {
-                        io.emit('game:complete', {
+                        // Broadcast to match room only
+                        io.to(matchRoom).emit('game:complete', {
                             matchId,
                             scores: result.scores,
+                            winner: result.scores.player1 > result.scores.player2 ? 'player1' : 'player2'
                         });
+                        websocketLogger.info(`Game complete: ${matchId}`, { scores: result.scores });
                     }
                 } else {
                     socket.emit('game:invalid_move', {
