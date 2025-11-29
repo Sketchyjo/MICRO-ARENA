@@ -9,7 +9,8 @@ import {
     keccak256,
     encodePacked,
     parseAbiItem,
-    decodeEventLog
+    decodeEventLog,
+    toBytes
 } from 'viem';
 import { celoSepolia } from 'viem/chains';
 
@@ -151,6 +152,13 @@ const MICRO_ARENA_ABI = [
         ],
         name: 'getAvailableMatches',
         outputs: [{ name: '', type: 'uint256[]' }],
+        stateMutability: 'view',
+        type: 'function',
+    },
+    {
+        inputs: [],
+        name: 'cUSD',
+        outputs: [{ name: '', type: 'address' }],
         stateMutability: 'view',
         type: 'function',
     },
@@ -547,26 +555,52 @@ class ContractService {
 
         try {
             const stakeWei = parseUnits(stake, 18);
+            console.log(`📝 Creating match: gameType=${gameType}, stake=${stake} cUSD (${stakeWei} wei)`);
+
+            // Verify cUSD address matches contract's expected token
+            const contractCusdAddress = await this.publicClient.readContract({
+                address: this.contractAddress as `0x${string}`,
+                abi: MICRO_ARENA_ABI,
+                functionName: 'cUSD',
+            }) as string;
+            
+            if (contractCusdAddress.toLowerCase() !== CUSD_ADDRESS.toLowerCase()) {
+                console.error(`❌ cUSD address mismatch! Contract expects: ${contractCusdAddress}, Frontend uses: ${CUSD_ADDRESS}`);
+                throw new Error(`Token address mismatch. Contract uses different cUSD token.`);
+            }
+            console.log(`✅ cUSD address verified: ${contractCusdAddress}`);
 
             // Check balance first
             const balance = await this.getCUSDBalance();
+            console.log(`💰 cUSD balance: ${balance}`);
             const balanceWei = parseUnits(balance, 18);
             if (balanceWei < stakeWei) {
                 throw new Error(`Insufficient cUSD balance. You have ${balance} cUSD but need ${stake} cUSD`);
             }
 
             // Check current allowance
-            const currentAllowance = await this.getCUSDAllowance();
-            const allowanceWei = parseUnits(currentAllowance, 18);
-            
-            // Only approve if needed
+            let currentAllowance = await this.getCUSDAllowance();
+            console.log(`📝 Current allowance: ${currentAllowance} cUSD`);
+            let allowanceWei = parseUnits(currentAllowance, 18);
+
+            // Approve if needed
             if (allowanceWei < stakeWei) {
                 console.log(`Approving ${stake} cUSD...`);
                 await this.approveCUSD(stake);
+                
+                // Re-check allowance after approval
+                currentAllowance = await this.getCUSDAllowance();
+                console.log(`📝 Allowance after approval: ${currentAllowance} cUSD`);
+                allowanceWei = parseUnits(currentAllowance, 18);
+                
+                if (allowanceWei < stakeWei) {
+                    throw new Error(`Approval failed. Allowance is ${currentAllowance} but need ${stake} cUSD`);
+                }
             } else {
                 console.log('✅ Sufficient allowance already exists');
             }
 
+            console.log('📤 Sending createMatch transaction...');
             const hash = await this.walletClient.writeContract({
                 address: this.contractAddress as `0x${string}`,
                 abi: MICRO_ARENA_ABI,
@@ -582,8 +616,14 @@ class ContractService {
 
             // Parse MatchCreated event to get matchId
             let matchId = BigInt(0);
+
             for (const log of receipt.logs) {
                 try {
+                    // Check if this log is from our contract and is MatchCreated event
+                    if (log.address.toLowerCase() !== this.contractAddress.toLowerCase()) {
+                        continue;
+                    }
+
                     const decoded = decodeEventLog({
                         abi: MICRO_ARENA_ABI,
                         data: log.data,
@@ -592,6 +632,7 @@ class ContractService {
 
                     if (decoded.eventName === 'MatchCreated') {
                         matchId = (decoded.args as any).matchId;
+                        console.log('✅ Extracted match ID from event:', matchId);
                         break;
                     }
                 } catch (e) {
@@ -601,13 +642,14 @@ class ContractService {
             }
 
             if (matchId === BigInt(0)) {
+                console.error('❌ Failed to extract match ID. Receipt logs:', receipt.logs);
                 throw new Error('Failed to extract match ID from transaction');
             }
 
             return { matchId, txHash: hash };
         } catch (error: any) {
             console.error('Failed to create match:', error);
-            
+
             // Provide more helpful error messages
             if (error.message?.includes('insufficient funds')) {
                 throw new Error('Insufficient CELO for gas fees. Get testnet CELO from https://faucet.celo.org');
@@ -618,7 +660,7 @@ class ContractService {
             if (error.message?.includes('TransferFailed')) {
                 throw new Error('cUSD transfer failed. Check your balance and try again.');
             }
-            
+
             throw new Error(`Match creation failed: ${error.message || 'Unknown error'}`);
         }
     }
@@ -630,27 +672,52 @@ class ContractService {
         if (!this.walletClient || !this.account) throw new Error('Wallet not connected');
 
         try {
-            const stakeWei = parseUnits(stake, 18);
+            console.log(`🔗 Joining match ${matchId} with stake ${stake} cUSD...`);
+
+            // Check match status first
+            const match = await this.getMatch(matchId);
+            console.log('📋 Match status:', {
+                id: match.id.toString(),
+                status: match.status,
+                player1: match.player1,
+                player2: match.player2,
+                stake: formatUnits(match.stake, 18)
+            });
+
+            // Status 0 = WAITING, 1 = ACTIVE
+            if (match.status !== 0) {
+                throw new Error(`Match is not available to join (status: ${match.status}). It may have been joined by another player.`);
+            }
+            if (match.player2 !== '0x0000000000000000000000000000000000000000') {
+                throw new Error('Match already has a second player');
+            }
+
+            // Use the match's stake amount
+            const stakeWei = match.stake;
+            const stakeFormatted = formatUnits(stakeWei, 18);
 
             // Check balance first
             const balance = await this.getCUSDBalance();
+            console.log(`💰 cUSD balance: ${balance}`);
             const balanceWei = parseUnits(balance, 18);
             if (balanceWei < stakeWei) {
-                throw new Error(`Insufficient cUSD balance. You have ${balance} cUSD but need ${stake} cUSD`);
+                throw new Error(`Insufficient cUSD balance. You have ${balance} cUSD but need ${stakeFormatted} cUSD`);
             }
 
             // Check current allowance
             const currentAllowance = await this.getCUSDAllowance();
+            console.log(`📝 Current allowance: ${currentAllowance} cUSD`);
             const allowanceWei = parseUnits(currentAllowance, 18);
-            
+
             // Only approve if needed
             if (allowanceWei < stakeWei) {
-                console.log(`Approving ${stake} cUSD...`);
-                await this.approveCUSD(stake);
+                console.log(`Approving ${stakeFormatted} cUSD...`);
+                await this.approveCUSD(stakeFormatted);
             } else {
                 console.log('✅ Sufficient allowance already exists');
             }
 
+            console.log('📤 Sending joinMatch transaction...');
             const hash = await this.walletClient.writeContract({
                 address: this.contractAddress as `0x${string}`,
                 abi: MICRO_ARENA_ABI,
@@ -665,7 +732,7 @@ class ContractService {
             return hash;
         } catch (error: any) {
             console.error('Failed to join match:', error);
-            
+
             // Provide more helpful error messages
             if (error.message?.includes('insufficient funds')) {
                 throw new Error('Insufficient CELO for gas fees. Get testnet CELO from https://faucet.celo.org');
@@ -676,7 +743,10 @@ class ContractService {
             if (error.message?.includes('TransferFailed')) {
                 throw new Error('cUSD transfer failed. Check your balance and try again.');
             }
-            
+            if (error.message?.includes('not available to join') || error.message?.includes('already has a second player')) {
+                throw error;
+            }
+
             throw new Error(`Join match failed: ${error.message || 'Unknown error'}`);
         }
     }

@@ -1,7 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 
 class WebSocketClient {
-    private socket: Socket | null = null;
+    public socket: Socket | null = null;
     private serverUrl: string;
     private reconnectAttempts = 0;
     private maxReconnectAttempts = 5;

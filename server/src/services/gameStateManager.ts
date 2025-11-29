@@ -67,14 +67,14 @@ export class GameStateManager {
         };
 
         this.gameStates.set(matchId, gameState);
-        
+
         // Persist to database
         try {
             await saveGameState(matchId, gameState);
         } catch (error) {
             gameLogger.error('Failed to save game state:', error);
         }
-        
+
         gameLogger.info(`Game state created: ${matchId} - ${gameType}`);
         return gameState;
     }
@@ -105,10 +105,29 @@ export class GameStateManager {
             return { valid: false, error: 'Game already complete' };
         }
 
+        // Validate it's the correct player's turn
+        const isPlayer1 = gameState.player1 === playerAddress;
+        const isPlayer2 = gameState.player2 === playerAddress;
+        const isPlayer1Turn = gameState.currentTurn === 'player1';
+
+        if ((isPlayer1Turn && !isPlayer1) || (!isPlayer1Turn && !isPlayer2)) {
+            gameLogger.warn(`Wrong player attempted move: ${matchId}`, {
+                playerAddress,
+                currentTurn: gameState.currentTurn,
+                player1: gameState.player1,
+                player2: gameState.player2
+            });
+            return { valid: false, error: 'Not your turn' };
+        }
+
         const engine = this.engines.get(gameState.gameType);
         if (!engine) {
             return { valid: false, error: 'Game engine not found' };
         }
+
+        // Inject player addresses into internal state for engine validation
+        gameState.state.player1 = gameState.player1;
+        gameState.state.player2 = gameState.player2;
 
         // Validate move
         const validation = engine.validateMove(gameState.state, move, playerAddress);
@@ -122,6 +141,11 @@ export class GameStateManager {
         gameState.state = newState;
         gameState.lastMove = { move, player: playerAddress, timestamp: Date.now() };
         gameState.updatedAt = Date.now();
+
+        // Sync turn with engine state
+        if (newState.currentPlayer !== undefined) {
+            gameState.currentTurn = newState.currentPlayer === 1 ? 'player1' : 'player2';
+        }
 
         // Check if game is complete
         const completion = engine.checkCompletion(newState);
@@ -147,9 +171,6 @@ export class GameStateManager {
             };
         }
 
-        // Switch turn
-        gameState.currentTurn = gameState.currentTurn === 'player1' ? 'player2' : 'player1';
-
         // Persist updated state
         try {
             await saveGameState(matchId, gameState);
@@ -169,7 +190,7 @@ export class GameStateManager {
      */
     async handleResignation(matchId: string, playerAddress: string): Promise<void> {
         let gameState = this.gameStates.get(matchId);
-        
+
         if (!gameState) {
             try {
                 gameState = await loadGameState(matchId);
@@ -180,7 +201,7 @@ export class GameStateManager {
                 gameLogger.error('Failed to load game state for resignation:', error);
             }
         }
-        
+
         if (!gameState) return;
 
         gameState.isComplete = true;
@@ -193,7 +214,7 @@ export class GameStateManager {
         };
 
         gameLogger.info(`Player resignation: ${matchId}`, { playerAddress });
-        
+
         // Clean up
         this.gameStates.delete(matchId);
         try {
@@ -208,7 +229,7 @@ export class GameStateManager {
      */
     async getGameState(matchId: string): Promise<GameState | undefined> {
         let gameState = this.gameStates.get(matchId);
-        
+
         if (!gameState) {
             try {
                 gameState = await loadGameState(matchId);
@@ -219,7 +240,7 @@ export class GameStateManager {
                 gameLogger.error('Failed to load game state:', error);
             }
         }
-        
+
         return gameState;
     }
 

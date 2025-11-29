@@ -4,6 +4,7 @@ import { GameType, MatchStatus } from '../types';
 
 export interface GameState {
     matchId: bigint | null;
+    tempMatchId: string | null;  // Server-side temp match ID before blockchain
     gameType: GameType | null;
     stake: string;
     status: MatchStatus;
@@ -34,6 +35,7 @@ class GameIntegrationService {
     private getInitialState(): GameState {
         return {
             matchId: null,
+            tempMatchId: null,
             gameType: null,
             stake: '0',
             status: MatchStatus.IDLE,
@@ -75,19 +77,225 @@ class GameIntegrationService {
      */
     private setupWebSocketListeners(): void {
         // Matchmaking events
-        websocketClient.onMatchFound((data) => {
+        websocketClient.onMatchFound(async (data) => {
             console.log('🎮 Match found:', data);
-            // The server returns the blockchain match ID, which should already be stored
-            // We just need to update the opponent and status
-            this.updateState({
-                opponentAddress: data.opponent,
-                status: MatchStatus.MATCHED,
-            });
+
+            // Store the server's game state for initialization
+            if (data.gameState) {
+                (window as any).__serverGameState = data.gameState;
+                (window as any).__isPlayer1 = data.isPlayer1;
+            }
+
+            // Check if matchId is a valid blockchain ID (numeric string)
+            const isBlockchainMatch = /^\d+$/.test(data.matchId);
+            console.log('🔍 Match ID type:', data.matchId, 'Is blockchain match:', isBlockchainMatch);
+
+            // Check if we already have a blockchain match ID (Player 1 created it before searching)
+            const alreadyHasBlockchainMatch = this.gameState.matchId !== null;
+            console.log('🔍 Already has blockchain match:', alreadyHasBlockchainMatch, this.gameState.matchId?.toString());
+
+            // PLAYER 1: Create blockchain match when matched with temporary ID
+            // Skip if we already created a blockchain match before searching
+            if (!isBlockchainMatch && data.isPlayer1 && !alreadyHasBlockchainMatch) {
+                // Prevent multiple creation attempts
+                if (this.gameState.status === MatchStatus.CREATING_MATCH) {
+                    console.log('⚠️ Already creating match, ignoring duplicate event');
+                    return;
+                }
+
+                try {
+                    console.log('📝 Player 1: Creating blockchain match...');
+                    this.updateState({ status: MatchStatus.CREATING_MATCH });
+
+                    const { matchId, txHash } = await contractService.createMatch(
+                        this.gameTypeToNumber(this.gameState.gameType!),
+                        data.stake
+                    );
+
+                    console.log('✅ Player 1: Blockchain match created:', matchId.toString(), txHash);
+
+                    // Update local state with blockchain match ID
+                    this.updateState({
+                        matchId,
+                        tempMatchId: data.matchId,  // Store temp match ID
+                        opponentAddress: data.opponent,
+                        isPlayer1: true,
+                        status: MatchStatus.MATCHED,
+                    });
+
+                    // Notify server of the blockchain match ID so it can tell Player 2
+                    console.log('📤 Player 1: Notifying server of blockchain match ID...');
+                    websocketClient.socket?.emit('match:blockchain_created', {
+                        tempMatchId: data.matchId,
+                        blockchainMatchId: matchId.toString(),
+                        playerAddress: this.gameState.playerAddress
+                    });
+
+                    return;
+                } catch (error: any) {
+                    console.error('❌ Player 1: Failed to create blockchain match:', error);
+                    this.handleError(`Failed to create blockchain match: ${error.message}`);
+
+                    // Notify server that blockchain match creation failed so Player 2 doesn't get stuck
+                    websocketClient.socket?.emit('match:blockchain_failed', {
+                        tempMatchId: data.matchId,
+                        error: error.message
+                    });
+
+                    this.updateState({ status: MatchStatus.IDLE });
+                    return;
+                }
+            }
+
+            // PLAYER 1: Already has blockchain match, just notify server
+            if (!isBlockchainMatch && data.isPlayer1 && alreadyHasBlockchainMatch) {
+                console.log('✅ Player 1: Using existing blockchain match:', this.gameState.matchId!.toString());
+                this.updateState({
+                    tempMatchId: data.matchId,  // Store temp match ID
+                    opponentAddress: data.opponent,
+                    isPlayer1: true,
+                    status: MatchStatus.MATCHED,
+                });
+
+                // Notify server of the existing blockchain match ID
+                websocketClient.socket?.emit('match:blockchain_created', {
+                    tempMatchId: data.matchId,
+                    blockchainMatchId: this.gameState.matchId!.toString(),
+                    playerAddress: this.gameState.playerAddress
+                });
+                return;
+            }
+
+            // PLAYER 2: Wait for blockchain match ID from server, then join
+            if (!isBlockchainMatch && !data.isPlayer1) {
+                console.log('⏳ Player 2: Waiting for Player 1 to create blockchain match...');
+                this.updateState({
+                    status: MatchStatus.MATCHED,
+                    tempMatchId: data.matchId,  // Store temp match ID for later
+                    opponentAddress: data.opponent,
+                    isPlayer1: false
+                });
+                // Will receive blockchain match ID via 'match:blockchain_ready' event
+                return;
+            }
+
+            // If already a blockchain match (Player 1 re-matched or direct blockchain match)
+            if (isBlockchainMatch) {
+                const matchIdBigInt = BigInt(data.matchId);
+
+                // PLAYER 2: Join the blockchain match
+                if (!data.isPlayer1) {
+                    // Prevent multiple join attempts
+                    if (this.gameState.status === MatchStatus.JOINING || this.gameState.status === MatchStatus.ACTIVE) {
+                        console.log('⚠️ Already joining/active, ignoring duplicate event');
+                        return;
+                    }
+
+                    try {
+                        console.log(`🔗 Player 2: Joining blockchain match ${data.matchId}...`);
+                        this.updateState({ status: MatchStatus.JOINING });
+                        await contractService.joinMatch(matchIdBigInt, data.stake);
+                        console.log('✅ Player 2: Successfully joined blockchain match');
+                    } catch (error) {
+                        console.error('❌ Player 2: Failed to join blockchain match:', error);
+                        this.handleError('Failed to join blockchain match. Game may not save scores properly.');
+                    }
+                }
+
+                // Update state for both players
+                this.updateState({
+                    matchId: matchIdBigInt,
+                    opponentAddress: data.opponent,
+                    isPlayer1: data.isPlayer1,
+                    status: MatchStatus.MATCHED,
+                });
+            }
         });
 
-        websocketClient.onMatchSearching((data) => {
-            console.log('🔍 Searching for match...');
-            this.updateState({ status: MatchStatus.SEARCHING });
+        // NEW: Listen for blockchain match ready event (for Player 2)
+        websocketClient.socket?.on('match:blockchain_ready', async (data: { blockchainMatchId: string; stake: string }) => {
+            console.log('📥 Player 2: Received blockchain match ID:', data.blockchainMatchId);
+
+            try {
+                // Prevent multiple join attempts
+                if (this.gameState.status === MatchStatus.JOINING || this.gameState.status === MatchStatus.ACTIVE) {
+                    console.log('⚠️ Already joining/active, ignoring duplicate event');
+                    return;
+                }
+
+                const matchIdBigInt = BigInt(data.blockchainMatchId);
+
+                console.log(`🔗 Player 2: Joining blockchain match ${data.blockchainMatchId}...`);
+                this.updateState({ status: MatchStatus.JOINING });
+
+                await contractService.joinMatch(matchIdBigInt, data.stake);
+                console.log('✅ Player 2: Successfully joined blockchain match and staked funds');
+
+                this.updateState({
+                    matchId: matchIdBigInt,
+                    status: MatchStatus.MATCHED,
+                });
+
+                // Notify server that Player 2 has joined and staked
+                console.log('📤 Player 2: Notifying server of successful join...');
+                websocketClient.socket?.emit('match:player2_joined', {
+                    tempMatchId: this.gameState.tempMatchId,
+                    blockchainMatchId: data.blockchainMatchId
+                });
+            } catch (error: any) {
+                console.error('❌ Player 2: Failed to join blockchain match:', error);
+                this.handleError(`Failed to join blockchain match: ${error.message}`);
+            }
+        });
+
+        websocketClient.onMatchSearching(async (data) => {
+            console.log('🔍 Searching for match... No opponents found yet.');
+
+            // If we're searching and don't have a blockchain match yet, we're the first player
+            // Create the blockchain match now
+            if (!this.gameState.matchId && this.gameState.gameType && this.gameState.stake) {
+                // Prevent multiple creation attempts
+                if (this.gameState.status === MatchStatus.CREATING_MATCH) {
+                    console.log('⚠️ Already creating match, ignoring duplicate event');
+                    return;
+                }
+
+                try {
+                    console.log('📝 Creating blockchain match as first player...');
+                    this.updateState({ status: MatchStatus.CREATING_MATCH });
+
+                    const { matchId, txHash } = await contractService.createMatch(
+                        this.gameTypeToNumber(this.gameState.gameType),
+                        this.gameState.stake
+                    );
+
+                    console.log('✅ Blockchain match created:', matchId, txHash);
+
+                    this.updateState({
+                        matchId,
+                        isPlayer1: true,
+                        status: MatchStatus.SEARCHING,
+                    });
+
+                    // Re-search with the blockchain match ID (small delay to avoid rate limit)
+                    console.log('🔍 Re-joining queue with blockchain match ID...');
+                    setTimeout(() => {
+                        websocketClient.searchMatch(
+                            this.gameState.gameType!,
+                            this.gameState.stake,
+                            this.gameState.playerAddress,
+                            matchId.toString()
+                        );
+                    }, 500);
+                } catch (error: any) {
+                    console.error('❌ Failed to create blockchain match:', error);
+                    this.handleError(`Failed to create blockchain match: ${error.message}`);
+                    this.updateState({ status: MatchStatus.IDLE });
+                }
+            } else {
+                // Already have a match ID, just update status
+                this.updateState({ status: MatchStatus.SEARCHING });
+            }
         });
 
         websocketClient.onMatchError((data) => {
@@ -160,7 +368,7 @@ class GameIntegrationService {
             this.updateState({
                 gameType,
                 stake,
-                status: MatchStatus.CREATING_MATCH,
+                status: MatchStatus.SEARCHING,
             });
 
             // Check cUSD balance
@@ -170,24 +378,13 @@ class GameIntegrationService {
                 throw new Error(`Insufficient cUSD balance. You have ${balance} cUSD but need ${stake} cUSD`);
             }
 
-            // Create match on-chain
-            console.log('📝 Creating match on blockchain...');
-            const { matchId, txHash } = await contractService.createMatch(
-                this.gameTypeToNumber(gameType),
-                stake
-            );
+            // First, try to join matchmaking queue WITHOUT creating blockchain match
+            // The server will tell us if we're matched or if we need to create a match
+            console.log('🔍 Searching for existing matches via WebSocket...');
+            websocketClient.searchMatch(gameType, stake, this.gameState.playerAddress, '');
 
-            console.log('✅ Match created:', matchId, txHash);
-
-            this.updateState({
-                matchId,
-                isPlayer1: true,
-                status: MatchStatus.SEARCHING,
-            });
-
-            // Join matchmaking queue with blockchain match ID
-            console.log('🔍 Joining matchmaking queue via WebSocket...');
-            websocketClient.searchMatch(gameType, stake, this.gameState.playerAddress, matchId.toString());
+            // Note: We'll create the blockchain match only if we're the first player
+            // This will be handled in the WebSocket response handler
         } catch (error: any) {
             this.handleError(`Failed to start matchmaking: ${error.message}`);
             this.updateState({ status: MatchStatus.IDLE });
@@ -244,14 +441,17 @@ class GameIntegrationService {
      * Send a game move
      */
     sendMove(move: any): void {
-        if (!this.gameState.matchId) {
+        // Use tempMatchId for WebSocket communication (server room ID)
+        const wsMatchId = this.gameState.tempMatchId || this.gameState.matchId?.toString();
+        if (!wsMatchId) {
             this.handleError('No active match');
             return;
         }
 
         try {
+            console.log('📤 Sending move to match:', wsMatchId, move);
             websocketClient.sendMove(
-                this.gameState.matchId.toString(),
+                wsMatchId,
                 move,
                 this.gameState.playerAddress
             );
@@ -264,14 +464,15 @@ class GameIntegrationService {
      * Resign from game
      */
     resignGame(): void {
-        if (!this.gameState.matchId) {
+        const wsMatchId = this.gameState.tempMatchId || this.gameState.matchId?.toString();
+        if (!wsMatchId) {
             this.handleError('No active match');
             return;
         }
 
         try {
             websocketClient.resignGame(
-                this.gameState.matchId.toString(),
+                wsMatchId,
                 this.gameState.playerAddress
             );
 

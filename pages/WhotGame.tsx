@@ -155,30 +155,25 @@ export default function WhotGame() {
     // Animation State for "Popups"
     const [effectPopup, setEffectPopup] = useState<{ text: string, color: string } | null>(null);
 
-    // Handle match found
+    // Handle match found - start game immediately
     useEffect(() => {
         if (gameState?.status === 'MATCHED' && !gameStarted) {
+            console.log('🎮 Match found, starting game immediately');
             setShowMatchmaking(false);
             setGameStarted(true);
-            initializeGame();
-            setMessage("Match found! Game starting...");
-            audioService.playShuffle();
-        }
-    }, [gameState?.status, gameStarted]);
 
-    // Handle match active
-    useEffect(() => {
-        if (gameState?.status === 'ACTIVE' && gameStarted && deck.length === 0) {
-            // Game is active, ensure it's initialized
-            if (localHand.length === 0 && opponentHand.length === 0) {
+            // Small delay to ensure server state is received
+            setTimeout(() => {
                 initializeGame();
-            }
+                setMessage(gameState?.isPlayer1 ? "Your turn!" : "Opponent's turn");
+                audioService.playShuffle();
+            }, 100);
         }
     }, [gameState?.status, gameStarted]);
 
-    // Timer countdown
+    // Timer countdown - start when game starts
     useEffect(() => {
-        if (gameState?.status === 'ACTIVE' && timeLeft > 0) {
+        if (gameStarted && timeLeft > 0) {
             const timer = setInterval(() => {
                 setTimeLeft(prev => {
                     if (prev <= 1) {
@@ -190,72 +185,282 @@ export default function WhotGame() {
             }, 1000);
             return () => clearInterval(timer);
         }
-    }, [gameState?.status, timeLeft]);
+    }, [gameStarted, timeLeft]);
+
+    // Listen for game:start event from server
+    useEffect(() => {
+        if (!gameState?.matchId) return;
+
+        const handleGameStart = (data: any) => {
+            console.log('🎮 Game start event received:', data);
+            if (data.gameState) {
+                // Store server state for initialization
+                (window as any).__serverGameState = data.gameState;
+                // Initialize the game if not already started
+                if (!gameStarted) {
+                    setGameStarted(true);
+                    setTimeout(() => {
+                        initializeGame();
+                        audioService.playShuffle();
+                    }, 100);
+                }
+            }
+        };
+
+        websocketClient.socket?.on('game:start', handleGameStart);
+
+        return () => {
+            websocketClient.socket?.off('game:start', handleGameStart);
+        };
+    }, [gameState?.matchId, gameStarted]);
 
     // Listen for opponent moves via WebSocket
     useEffect(() => {
         if (!gameState?.matchId) return;
 
         const handleOpponentMove = (data: any) => {
-            console.log('Received opponent move:', data);
-            const { move } = data;
+            console.log('📥 Received opponent move:', data);
+            const { move, gameState: serverGameState } = data;
 
             if (move.type === 'PLAY_CARD') {
-                // Opponent played a card
                 const card = move.card as WhotCard;
-                setOpponentHand(prev => prev.filter(c => c.id !== card.id));
+                audioService.playCardFlip();
+                
+                // Update discard pile with the played card
                 setDiscardPile(prev => [...prev, card]);
+                
+                // Remove one card from opponent's hand
+                setOpponentHand(prev => prev.slice(0, -1));
 
+                // Handle WHOT card shape selection
                 if (move.requiredShape) {
                     setRequiredShape(move.requiredShape);
                     triggerEffectPopup(`NEED ${move.requiredShape.toUpperCase()}`, "bg-yellow-500 text-black");
+                } else {
+                    setRequiredShape(null);
                 }
 
-                executeCardEffect(card, 'opponent');
+                // Show special card effects (UI only)
+                if (card.number === 1) {
+                    audioService.playSpecialCard();
+                    triggerEffectPopup("HOLD ON", "bg-indigo-500");
+                } else if (card.number === 2) {
+                    audioService.playSpecialCard();
+                    triggerEffectPopup("PICK 2", "bg-rose-500");
+                } else if (card.number === 5) {
+                    audioService.playSpecialCard();
+                    triggerEffectPopup("PICK 3", "bg-rose-600");
+                } else if (card.number === 8) {
+                    audioService.playSpecialCard();
+                    triggerEffectPopup("SKIP", "bg-amber-500");
+                } else if (card.number === 14) {
+                    audioService.playSpecialCard();
+                    triggerEffectPopup("MARKET", "bg-purple-500");
+                }
+
+                // Check for opponent win
+                if (serverGameState?.player1Hand?.length === 0 || serverGameState?.player2Hand?.length === 0) {
+                    handleGameEnd('opponent');
+                }
             } else if (move.type === 'DRAW_CARD') {
-                // Opponent drew cards
-                drawCard('opponent', move.count || 1);
-                setTurn('local');
+                // Opponent drew cards - add placeholder cards to their hand
+                const count = move.count || 1;
+                setOpponentHand(prev => [
+                    ...prev,
+                    ...Array(count).fill(null).map((_, i) => ({
+                        id: `drawn-${Date.now()}-${i}`,
+                        shape: 'circle',
+                        number: 1,
+                        isSpecial: false
+                    }))
+                ]);
             }
+            
+            // Turn will be synced via game:state_update event
         };
 
         websocketClient.onOpponentMove(handleOpponentMove);
 
+        // Listen for full state updates
+        const handleStateUpdate = (data: any) => {
+            console.log('📥 Received state update:', data);
+            if (data.gameState) {
+                const isPlayer1 = (window as any).__isPlayer1 ?? (gameState?.isPlayer1);
+                const serverTurn = data.currentTurn === 'player1' ? (isPlayer1 ? 'local' : 'opponent') : (isPlayer1 ? 'opponent' : 'local');
+
+                // Sync turn
+                if (turn !== serverTurn) {
+                    console.log('🔄 Syncing turn with server:', serverTurn);
+                    setTurn(serverTurn);
+                    setMessage(serverTurn === 'local' ? "Your turn!" : "Opponent's turn");
+                }
+
+                // Sync local hand from server (for drawn cards)
+                const myServerHand = isPlayer1 ? data.gameState.player1Hand : data.gameState.player2Hand;
+                if (myServerHand && myServerHand.length > localHand.length) {
+                    console.log('🔄 Syncing local hand - new cards drawn');
+                    const convertCard = (card: any, index: number) => ({
+                        id: `${card.shape}-${card.number}-${Date.now()}-${index}`,
+                        shape: card.shape,
+                        number: card.number,
+                        isSpecial: [1, 2, 5, 8, 14, 20].includes(card.number)
+                    });
+                    setLocalHand(myServerHand.map(convertCard));
+                }
+
+                // Sync opponent hand count from server state
+                if (data.gameState.player1Hand && data.gameState.player2Hand) {
+                    const opponentHandCount = isPlayer1 ? data.gameState.player2Hand.length : data.gameState.player1Hand.length;
+                    if (opponentHand.length !== opponentHandCount) {
+                        console.log('🔄 Syncing opponent hand count:', opponentHandCount);
+                        setOpponentHand(prev => {
+                            const diff = opponentHandCount - prev.length;
+                            if (diff > 0) {
+                                return [...prev, ...Array(diff).fill(null).map((_, i) => ({ 
+                                    id: `placeholder-${Date.now()}-${i}`, 
+                                    shape: 'circle', 
+                                    number: 1, 
+                                    isSpecial: false 
+                                }))];
+                            } else if (diff < 0) {
+                                return prev.slice(0, opponentHandCount);
+                            }
+                            return prev;
+                        });
+                    }
+                }
+
+                // Sync discard pile top card
+                if (data.gameState.discardPile?.length > 0) {
+                    const serverTopCard = data.gameState.discardPile[data.gameState.discardPile.length - 1];
+                    const localTopCard = discardPile[discardPile.length - 1];
+                    if (!localTopCard || serverTopCard.shape !== localTopCard.shape || serverTopCard.number !== localTopCard.number) {
+                        console.log('🔄 Syncing discard pile');
+                        const convertCard = (card: any, index: number) => ({
+                            id: `discard-${card.shape}-${card.number}-${index}`,
+                            shape: card.shape,
+                            number: card.number,
+                            isSpecial: [1, 2, 5, 8, 14, 20].includes(card.number)
+                        });
+                        setDiscardPile(data.gameState.discardPile.map(convertCard));
+                    }
+                }
+
+                // Sync pending pickup if available
+                if (data.gameState.pendingPickup !== undefined && data.gameState.pendingPickup !== pendingPickup) {
+                    console.log('🔄 Syncing pending pickup:', data.gameState.pendingPickup);
+                    setPendingPickup(data.gameState.pendingPickup);
+                }
+
+                // Sync required shape if available
+                if (data.gameState.requiredShape !== undefined && data.gameState.requiredShape !== requiredShape) {
+                    console.log('🔄 Syncing required shape:', data.gameState.requiredShape);
+                    setRequiredShape(data.gameState.requiredShape);
+                }
+            }
+        };
+
+        websocketClient.socket?.on('game:state_update', handleStateUpdate);
+
         return () => {
             websocketClient.off('game:opponent_move');
+            websocketClient.socket?.off('game:state_update', handleStateUpdate);
         };
-    }, [gameState?.matchId]);
+    }, [gameState?.matchId, gameState?.isPlayer1, turn, localHand.length, opponentHand.length, pendingPickup, requiredShape]);
 
     // Initialization
     const initializeGame = () => {
-        const fullDeck = gameEngine.generateWhotDeck();
-        const p1 = fullDeck.slice(0, 6);
-        const p2 = fullDeck.slice(6, 12);
-        const startCard = fullDeck[12];
-        const remainingDeck = fullDeck.slice(13);
+        // Check if we have server-generated game state
+        const serverState = (window as any).__serverGameState;
+        const isPlayer1 = (window as any).__isPlayer1;
 
-        setLocalHand(p1);
-        setOpponentHand(p2);
-        setDiscardPile([startCard]);
-        setDeck(remainingDeck);
-        setTurn(gameState?.isPlayer1 ? 'local' : 'opponent');
-        setMessage(gameState?.isPlayer1 ? "Your turn!" : "Opponent's turn");
+        if (serverState) {
+            console.log('🎮 Using server game state:', serverState);
+            console.log('🎮 Is Player 1:', isPlayer1);
+            console.log('🎮 Player 1 hand:', serverState.player1Hand);
+            console.log('🎮 Player 2 hand:', serverState.player2Hand);
+            console.log('🎮 Discard pile:', serverState.discardPile);
+            console.log('🎮 Deck remaining:', serverState.deck.length, 'cards');
+
+            // Use the server's deck and hands
+            const myHand = isPlayer1 ? serverState.player1Hand : serverState.player2Hand;
+            const opponentHandCards = isPlayer1 ? serverState.player2Hand : serverState.player1Hand;
+
+            // Convert server cards to client format
+            const convertCard = (card: any, index: number) => ({
+                id: `${card.shape}-${card.number}-${index}`,
+                shape: card.shape,
+                number: card.number,
+                isSpecial: card.special !== undefined || [1, 2, 5, 8, 14, 20].includes(card.number)
+            });
+
+            setLocalHand(myHand.map(convertCard));
+            setOpponentHand(opponentHandCards.map((c: any, i: number) => convertCard(c, i + 100)));
+
+            // Set the discard pile from server state
+            if (serverState.discardPile && serverState.discardPile.length > 0) {
+                console.log('✅ Using server discard pile with', serverState.discardPile.length, 'cards');
+                setDiscardPile(serverState.discardPile.map((c: any, i: number) => convertCard(c, i + 200)));
+            } else {
+                console.warn('⚠️ Server discard pile is empty, this should not happen!');
+                // Fallback: take first card from deck (should not happen with fixed server)
+                if (serverState.deck && serverState.deck.length > 0) {
+                    const firstCard = serverState.deck[0];
+                    setDiscardPile([convertCard(firstCard, 200)]);
+                    setDeck(serverState.deck.slice(1).map((c: any, i: number) => convertCard(c, i + 300)));
+                }
+            }
+
+            // Set the remaining deck
+            if (serverState.deck && serverState.deck.length > 0) {
+                setDeck(serverState.deck.map((c: any, i: number) => convertCard(c, i + 300)));
+            }
+
+            setTurn(isPlayer1 ? 'local' : 'opponent');
+            setMessage(isPlayer1 ? "Your turn!" : "Opponent's turn");
+
+            console.log('✅ Game initialized successfully');
+            console.log('   - My hand:', myHand.length, 'cards');
+            console.log('   - Opponent hand:', opponentHandCards.length, 'cards');
+            console.log('   - Discard pile:', serverState.discardPile?.length || 0, 'cards');
+            console.log('   - Deck:', serverState.deck?.length || 0, 'cards');
+
+            // Clear the server state from window
+            delete (window as any).__serverGameState;
+            delete (window as any).__isPlayer1;
+        } else {
+            // Fallback to local generation (for testing/spectator mode)
+            console.warn('⚠️ No server state found! Using local deck generation (NOT recommended for multiplayer)');
+            const fullDeck = gameEngine.generateWhotDeck();
+            const p1 = fullDeck.slice(0, 6);
+            const p2 = fullDeck.slice(6, 12);
+            const startCard = fullDeck[12];
+            const remainingDeck = fullDeck.slice(13);
+
+            setLocalHand(p1);
+            setOpponentHand(p2);
+            setDiscardPile([startCard]);
+            setDeck(remainingDeck);
+            setTurn(gameState?.isPlayer1 ? 'local' : 'opponent');
+            setMessage(gameState?.isPlayer1 ? "Your turn!" : "Opponent's turn");
+        }
     };
 
     // Bot & Spectator Logic (for testing/spectator mode only)
     useEffect(() => {
-        if (gameState?.status === 'ACTIVE') return; // Don't use bot in production mode
+        // Don't use bot in multiplayer mode - check both matchId and status
+        if (gameState?.matchId || gameState?.status === 'MATCHED' || gameState?.status === 'ACTIVE') return;
 
         let timeout: ReturnType<typeof setTimeout>;
-        if (turn === 'opponent' && !gameState?.matchId) {
+        if (turn === 'opponent') {
             const think = Math.random() * 1000 + 1500;
             timeout = setTimeout(() => playBotTurn('opponent'), think);
         }
         return () => clearTimeout(timeout);
-    }, [turn, deck, discardPile, opponentHand, pendingPickup, requiredShape, gameState?.status]);
+    }, [turn, deck, discardPile, opponentHand, pendingPickup, requiredShape, gameState?.matchId, gameState?.status]);
 
     useEffect(() => {
-        if (!isSpectator || gameState?.status === 'ACTIVE') return;
+        if (!isSpectator || gameState?.matchId || gameState?.status === 'MATCHED') return;
 
         let timeout: ReturnType<typeof setTimeout>;
         if (turn === 'local') {
@@ -263,7 +468,7 @@ export default function WhotGame() {
             timeout = setTimeout(() => playBotTurn('local'), think);
         }
         return () => clearTimeout(timeout);
-    }, [turn, isSpectator, deck, discardPile, localHand, pendingPickup, requiredShape, gameState?.status]);
+    }, [turn, isSpectator, deck, discardPile, localHand, pendingPickup, requiredShape, gameState?.matchId, gameState?.status]);
 
     // --- Helpers ---
     const getTopCard = () => discardPile[discardPile.length - 1];
@@ -325,15 +530,27 @@ export default function WhotGame() {
         if (turn !== 'local' || isSpectator) return;
 
         const count = pendingPickup > 0 ? pendingPickup : 1;
-        drawCard('local', count);
 
-        // Send draw move via WebSocket
-        if (gameState?.matchId) {
+        // In multiplayer mode, send to server and wait for state sync
+        if (gameState?.matchId || gameState?.status === 'MATCHED') {
+            console.log('📤 Sending draw request to server:', count);
             sendMove({
                 type: 'DRAW_CARD',
                 count: count
             });
+            
+            // Show feedback immediately
+            if (pendingPickup > 0) {
+                triggerEffectPopup(`Picking ${count}...`, 'bg-red-500');
+            } else {
+                setMessage("Going to market...");
+            }
+            // State will be synced via game:state_update
+            return;
         }
+
+        // Single player / bot mode - draw locally
+        drawCard('local', count);
 
         if (pendingPickup > 0) {
             triggerEffectPopup(`Picked ${count}`, 'bg-red-500');
@@ -394,14 +611,25 @@ export default function WhotGame() {
     };
 
     const playCard = (card: WhotCard) => {
-        if (turn !== 'local' || isAnimating || isSpectator) return;
+        // Validate it's the player's turn
+        if (turn !== 'local') {
+            audioService.playError();
+            triggerEffectPopup("NOT YOUR TURN", "bg-red-600");
+            setMessage("Wait for your turn!");
+            return;
+        }
 
+        // Prevent moves while animating or in spectator mode
+        if (isAnimating || isSpectator) return;
+
+        // Validate move is legal
         if (!checkMoveValidity(card)) {
             audioService.playError();
             triggerEffectPopup("INVALID", "bg-slate-700");
             return;
         }
 
+        // Validate penalty defense
         if (pendingPickup > 0 && card.number !== getTopCard().number) {
             audioService.playError();
             setMessage("Must play matching number!");
@@ -412,24 +640,25 @@ export default function WhotGame() {
         setLocalHand(prev => prev.filter(c => c.id !== card.id));
         setDiscardPile(prev => [...prev, card]);
 
-        // Send move via WebSocket in production mode
-        if (gameState?.matchId) {
-            sendMove({
-                type: 'PLAY_CARD',
-                card: card,
-                requiredShape: null // Will be set if WHOT card
-            });
-        }
-
         if (localHand.length === 1) {
             handleGameEnd('local');
             return;
         }
 
+        // WHOT card - wait for shape selection before sending to server
         if (card.number === 20) {
             audioService.playSpecialCard();
             setIsAnimating(true);
             return;
+        }
+
+        // Send move via WebSocket in multiplayer mode
+        if (gameState?.matchId || gameState?.status === 'MATCHED') {
+            sendMove({
+                type: 'PLAY_CARD',
+                card: { shape: card.shape, number: card.number },
+                requiredShape: null
+            });
         }
 
         executeCardEffect(card, 'local');
@@ -441,12 +670,12 @@ export default function WhotGame() {
         setTurn('opponent');
         setIsAnimating(false);
 
-        // Send WHOT card selection via WebSocket
-        if (gameState?.matchId) {
+        // Send WHOT card with shape selection via WebSocket
+        if (gameState?.matchId || gameState?.status === 'MATCHED') {
             const lastCard = discardPile[discardPile.length - 1];
             sendMove({
                 type: 'PLAY_CARD',
-                card: lastCard,
+                card: { shape: lastCard.shape, number: lastCard.number },
                 requiredShape: shape
             });
         }

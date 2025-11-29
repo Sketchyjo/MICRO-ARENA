@@ -10,6 +10,7 @@ const gameStateManager = new GameStateManager();
 
 // Rate limiting
 const rateLimits = new Map<string, { count: number; resetTime: number }>();
+const lastMoveTimestamps = new Map<string, number>();
 
 function checkRateLimit(socketId: string, limit: number = 10, windowMs: number = 60000): boolean {
     const now = Date.now();
@@ -106,7 +107,7 @@ export function initializeWebSocket(io: SocketIOServer) {
                     return;
                 }
 
-                if (!checkRateLimit(socket.id, 3, 10000)) {
+                if (!checkRateLimit(socket.id, 10, 30000)) {
                     socket.emit('matchmaking:error', { error: 'Rate limit exceeded' });
                     return;
                 }
@@ -122,12 +123,34 @@ export function initializeWebSocket(io: SocketIOServer) {
                 );
 
                 if (match.status === 'found') {
-                    // Notify both players
+                    // Initialize game state
+                    const gameState = await gameStateManager.createGameState(match.matchId!, match.gameType);
+                    gameState.player1 = match.player1;
+                    gameState.player2 = match.player2!;
+
+                    // Join both players to a match room
+                    const matchRoom = `match_${match.matchId}`;
+                    const player1Socket = io.sockets.sockets.get(match.player1SocketId!);
+                    const player2Socket = io.sockets.sockets.get(match.player2SocketId!);
+
+                    if (player1Socket) player1Socket.join(matchRoom);
+                    if (player2Socket) player2Socket.join(matchRoom);
+
+                    websocketLogger.info(`Game state initialized for match: ${match.matchId}`, {
+                        player1: match.player1,
+                        player2: match.player2,
+                        gameType: match.gameType,
+                        room: matchRoom
+                    });
+
+                    // Notify both players with game state
                     io.to(match.player1SocketId!).emit('matchmaking:found', {
                         matchId: match.matchId,
                         opponent: match.player2,
                         gameType: match.gameType,
                         stake: match.stake,
+                        isPlayer1: true,
+                        gameState: gameState.state, // Send the initial game state
                     });
 
                     io.to(match.player2SocketId!).emit('matchmaking:found', {
@@ -135,12 +158,12 @@ export function initializeWebSocket(io: SocketIOServer) {
                         opponent: match.player1,
                         gameType: match.gameType,
                         stake: match.stake,
+                        isPlayer1: false,
+                        gameState: gameState.state, // Send the initial game state
                     });
 
-                    // Initialize game state
-                    const gameState = await gameStateManager.createGameState(match.matchId!, match.gameType);
-                    gameState.player1 = match.player1;
-                    gameState.player2 = match.player2!;
+                    // NOTE: game:start is emitted after Player 2 confirms blockchain join
+                    // See 'match:player2_joined' handler below
                 } else {
                     socket.emit('matchmaking:searching', {
                         message: 'Searching for opponent...',
@@ -159,9 +182,92 @@ export function initializeWebSocket(io: SocketIOServer) {
             }
         });
 
+        // NEW: Handle blockchain match creation notification from Player 1
+        socket.on('match:blockchain_created', (data: { tempMatchId: string; blockchainMatchId: string; playerAddress: string }) => {
+            try {
+                const { tempMatchId, blockchainMatchId, playerAddress } = data;
+                websocketLogger.info(`Blockchain match created: ${blockchainMatchId} for temp match: ${tempMatchId}`, {
+                    playerAddress
+                });
+
+                // Find the match room and notify Player 2
+                const matchRoom = `match_${tempMatchId}`;
+                const match = matchmaking.getMatch(tempMatchId);
+
+                if (match && match.player2) {
+                    // Get Player 2's socket and notify them of the blockchain match ID
+                    const player2SocketId = match.player2SocketId;
+                    if (player2SocketId) {
+                        io.to(player2SocketId).emit('match:blockchain_ready', {
+                            blockchainMatchId,
+                            stake: match.stake
+                        });
+                        websocketLogger.info(`Notified Player 2 of blockchain match: ${blockchainMatchId}`);
+                    }
+                }
+            } catch (error) {
+                websocketLogger.error('Error handling blockchain match creation:', error);
+            }
+        });
+
+        // NEW: Handle blockchain match creation failure from Player 1
+        socket.on('match:blockchain_failed', (data: { tempMatchId: string; error: string }) => {
+            try {
+                const { tempMatchId, error } = data;
+                websocketLogger.warn(`Blockchain match creation failed for temp match: ${tempMatchId}`, { error });
+
+                // Find the match and notify Player 2
+                const match = matchmaking.getMatch(tempMatchId);
+                if (match && match.player2 && match.player2SocketId) {
+                    io.to(match.player2SocketId).emit('match:error', {
+                        error: 'Opponent failed to create blockchain match. Please try again.'
+                    });
+                    websocketLogger.info(`Notified Player 2 of blockchain match creation failure`);
+                }
+            } catch (error) {
+                websocketLogger.error('Error handling blockchain match failure:', error);
+            }
+        });
+
+        // Handle Player 2 confirming they've joined the blockchain match
+        socket.on('match:player2_joined', async (data: { tempMatchId: string; blockchainMatchId: string }) => {
+            try {
+                const { tempMatchId, blockchainMatchId } = data;
+                websocketLogger.info(`Player 2 joined blockchain match: ${blockchainMatchId}`, { tempMatchId });
+
+                const match = matchmaking.getMatch(tempMatchId);
+                const gameState = await gameStateManager.getGameState(tempMatchId);
+
+                if (match && gameState) {
+                    const matchRoom = `match_${tempMatchId}`;
+
+                    // Now emit game:start to both players
+                    io.to(matchRoom).emit('game:start', {
+                        matchId: tempMatchId,
+                        blockchainMatchId,
+                        gameState: gameState.state,
+                        currentTurn: gameState.currentTurn
+                    });
+
+                    websocketLogger.info(`Game started after Player 2 joined blockchain: ${blockchainMatchId}`);
+                }
+            } catch (error) {
+                websocketLogger.error('Error handling player2 joined:', error);
+            }
+        });
+
         // Game events
         socket.on('game:move', async (data: { matchId: string; move: any; playerAddress: string }) => {
             try {
+                // Rate limiting
+                const now = Date.now();
+                const lastMoveTime = lastMoveTimestamps.get(socket.id) || 0;
+                if (now - lastMoveTime < 100) {
+                    socket.emit('game:error', { error: 'Too many moves. Please slow down.' });
+                    return;
+                }
+                lastMoveTimestamps.set(socket.id, now);
+
                 if (!isAuthenticated || playerAddress !== data.playerAddress) {
                     socket.emit('game:error', { error: 'Not authenticated' });
                     return;
@@ -178,11 +284,20 @@ export function initializeWebSocket(io: SocketIOServer) {
                 const result = await gameStateManager.applyMove(matchId, movePlayerAddress, move);
 
                 if (result.valid) {
-                    // Broadcast move to opponent
-                    socket.broadcast.emit('game:opponent_move', {
+                    const matchRoom = `match_${matchId}`;
+
+                    // Broadcast move to opponent (for animation/event handling)
+                    socket.to(matchRoom).emit('game:opponent_move', {
                         matchId,
                         move,
                         gameState: result.gameState,
+                    });
+
+                    // Broadcast full state update to ALL players (for synchronization)
+                    io.to(matchRoom).emit('game:state_update', {
+                        matchId,
+                        gameState: result.gameState,
+                        currentTurn: result.gameState.currentPlayer === 1 ? 'player1' : 'player2'
                     });
 
                     // Check if game is complete
