@@ -1,297 +1,286 @@
 # MICRO-ARENA 🎮
 
-Production-ready blockchain gaming platform for 1v1 skill-based duels with cUSD micro-stakes on Celo.
+[![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://microarena-frontend.onrender.com)
+[![Backend](https://img.shields.io/badge/api-online-blue)](https://microarena-server.onrender.com)
+[![Celo](https://img.shields.io/badge/blockchain-Celo-yellow)](https://celo.org)
+
+**Production-ready blockchain gaming platform for 1v1 skill-based duels with cUSD micro-stakes on Celo.**
+
+🎮 **[Play Now →](https://microarena-frontend.onrender.com)**
+
+---
+
+## 🌟 Overview
+
+MICRO-ARENA is a decentralized competitive gaming platform where players wager cUSD (Celo Dollar) on skill-based 1v1 matches. The platform combines real-time WebSocket gameplay with blockchain-secured stakes and an anti-cheat commit-reveal scoring system.
+
+### Why MICRO-ARENA?
+
+- **Fair Play**: Commit-reveal pattern makes cheating mathematically impossible
+- **Instant Gameplay**: WebSocket-powered real-time matches with no blockchain delays during play
+- **Low Stakes, High Fun**: Micro-wagers starting from 1 cUSD make gaming accessible
+- **Trustless Payouts**: Smart contracts automatically determine winners and distribute funds
+
+---
 
 ## 🎯 Features
 
-- **6 Competitive Games**: Chess, WHOT, Survey Clash, Mancala, Connect4, Wordle Duel
-- **Real-time Multiplayer**: WebSocket-powered instant gameplay
-- **Blockchain Stakes**: Secure cUSD wagering with smart contracts
-- **Commit-Reveal Pattern**: Anti-cheat score submission
-- **Matchmaking**: Skill and stake-based opponent matching
-- **Spectator Mode**: Watch live matches
-- **Leaderboard**: Track top players and stats
+| Feature | Description |
+|---------|-------------|
+| **6 Competitive Games** | Chess, WHOT, Survey Clash, Mancala, Connect4, Wordle Duel |
+| **Real-time Multiplayer** | WebSocket-powered instant gameplay |
+| **Blockchain Stakes** | Secure cUSD wagering with smart contracts |
+| **Anti-Cheat System** | Commit-reveal pattern for score submission |
+| **Smart Matchmaking** | Skill and stake-based opponent matching |
+| **Leaderboard** | Track top players and statistics |
+
+---
+
+## 🎲 Games
+
+### Chess ♟️
+Classic chess with standard rules. Checkmate your opponent to win.
+
+### WHOT 🃏
+Popular Nigerian card game. Match shapes or numbers, use special cards strategically. First to empty hand wins.
+
+### Survey Clash 📊
+Family Feud-style guessing game. Guess top survey answers, avoid 3 strikes.
+
+### Mancala 🪨
+Ancient strategy game. Capture stones and fill your store. Most stones wins.
+
+### Connect4 🔴🟡
+Classic 4-in-a-row. Connect four pieces vertically, horizontally, or diagonally.
+
+### Wordle Duel 🔤
+Competitive word guessing. Race to solve the 5-letter word in fewer guesses.
+
+---
 
 ## 🏗️ Architecture
 
 ```
-MICRO-ARENA/
-├── contracts/          # Solidity smart contracts
-│   ├── MicroArena.sol # Main game contract
-│   ├── hardhat.config.ts
-│   └── scripts/deploy.ts
-├── server/            # Node.js backend
-│   ├── src/
-│   │   ├── index.ts   # Express + Socket.io server
-│   │   ├── services/  # Matchmaking, WebSocket, GameState
-│   │   ├── engines/   # Game logic for all 6 games
-│   │   └── database/  # PostgreSQL setup
-│   └── package.json
-├── services/          # Frontend services
-│   ├── contractService.ts  # Blockchain integration
-│   ├── websocketClient.ts  # Real-time communication
-│   └── gameEngine.ts       # Client-side game logic
-├── pages/             # React game components
-└── components/        # Reusable UI components
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│    Frontend     │────▶│  Backend Server │────▶│   PostgreSQL    │
+│  React + Vite   │     │ Express+Socket.io│     │    Database     │
+└────────┬────────┘     └────────┬────────┘     └─────────────────┘
+         │                       │
+         │    ┌─────────────────┐│
+         └───▶│  Celo Blockchain│◀┘
+              │  Smart Contract │
+              └─────────────────┘
 ```
+
+### Project Structure
+
+```
+MICRO-ARENA/
+├── contracts/           # Solidity smart contracts (Hardhat)
+│   └── contract/
+│       └── MicroArena.sol
+├── server/              # Node.js backend
+│   └── src/
+│       ├── engines/     # Game logic (chess, whot, mancala, etc.)
+│       ├── services/    # Matchmaking, WebSocket, GameState
+│       └── database/    # PostgreSQL setup
+├── pages/               # React game page components
+├── components/          # Reusable UI components
+├── services/            # Frontend services (blockchain, websocket)
+└── hooks/               # React custom hooks
+```
+
+---
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
-- Node.js 18+
-- PostgreSQL 14+
+- Node.js 18+ / pnpm
 - MetaMask or Valora wallet
-- Celo Alfajores testnet CELO (for gas)
-- Alfajores cUSD (for stakes)
+- Celo Sepolia testnet tokens
 
-### 1. Clone and Install
+### Get Test Tokens
+
+1. **CELO (for gas)**: [Celo Faucet](https://faucet.celo.org)
+2. **cUSD (for stakes)**: [Celo Faucet](https://faucet.celo.org)
+
+### Local Development
 
 ```bash
-git clone <repository-url>
+# Clone repository
+git clone https://github.com/Sketchyjo/MICRO-ARENA.git
 cd MICRO-ARENA
 
-# Install frontend dependencies
-npm install
+# Install dependencies
+pnpm install
+cd server && pnpm install && cd ..
+cd contracts && pnpm install && cd ..
 
-# Install backend dependencies
-cd server && npm install && cd ..
+# Start PostgreSQL (Docker)
+docker-compose up -d postgres
 
-# Install contract dependencies
-cd contracts && npm install && cd ..
+# Start backend
+cd server && pnpm run dev
+
+# Start frontend (new terminal)
+pnpm run dev
 ```
 
-### 2. Environment Setup
+### Environment Variables
 
-Copy `.env.example` to `.env.local` and fill in:
-
-```bash
-cp .env.example .env.local
+Create `.env.local` in root:
+```env
+VITE_CONTRACT_ADDRESS=0xb07035b03dFfdbcE9A51806fE103103bC6e7350c
+VITE_CUSD_TOKEN_ADDRESS=0xdE9e4C3ce781b4bA68120d6261cbad65ce0aB00b
+VITE_WEBSOCKET_URL=ws://localhost:3001
+VITE_CELO_RPC_URL=https://forno.celo-sepolia.celo-testnet.org/
 ```
 
-**Required variables:**
-- `VITE_CONTRACT_ADDRESS`: Deployed MicroArena contract address
-- `VITE_WEBSOCKET_URL`: Backend WebSocket URL (default: ws://localhost:3001)
-- `DATABASE_URL`: PostgreSQL connection string
-- `CELO_PRIVATE_KEY`: Deployer private key (for contracts)
-
-### 3. Database Setup
-
-```bash
-# Create PostgreSQL database
-createdb microarena
-
-# Update DATABASE_URL in .env.local
-# Example: postgresql://user:password@localhost:5432/microarena
+Create `.env` in `server/`:
+```env
+DATABASE_URL=postgresql://microarena:microarena123@localhost:5433/microarena
+PORT=3001
+NODE_ENV=development
 ```
 
-### 4. Deploy Smart Contract
-
-```bash
-cd contracts
-
-# Compile contract
-npm run compile
-
-# Deploy to Alfajores testnet
-npm run deploy:alfajores
-
-# Copy the deployed contract address to .env.local
-# VITE_CONTRACT_ADDRESS=0x...
-```
-
-### 5. Start Backend Server
-
-```bash
-cd server
-npm run dev
-
-# Server will run on http://localhost:3001
-# WebSocket available at ws://localhost:3001
-```
-
-### 6. Start Frontend
-
-```bash
-# In root directory
-npm run dev
-
-# Frontend will run on http://localhost:5173
-```
+---
 
 ## 🎮 How to Play
 
-### 1. Connect Wallet
-- Click "Connect Wallet" button
-- Approve connection in MetaMask/Valora
-- Ensure you're on Celo Alfajores testnet
+1. **Connect Wallet** - Click "Connect Wallet" and approve in MetaMask/Valora
+2. **Select Game** - Choose from 6 available games
+3. **Set Stake** - Enter your wager amount (minimum 1 cUSD)
+4. **Find Match** - Matchmaking pairs you with a similar-stake opponent
+5. **Play** - Compete in real-time via WebSocket
+6. **Submit Score** - Commit and reveal your score on-chain
+7. **Collect Winnings** - Smart contract automatically pays the winner
 
-### 2. Get Test Tokens
-- **CELO (for gas)**: https://faucet.celo.org
-- **cUSD (for stakes)**: https://faucet.celo.org
+---
 
-### 3. Select Game
-- Choose from 6 available games
-- Set your stake amount (minimum 1 cUSD)
-- Click "Find Match"
+## 📊 Smart Contract
 
-### 4. Play Match
-- Matchmaking finds opponent with similar stake
-- Play game in real-time via WebSocket
-- Moves validated by backend game engine
+**Deployed on Celo Sepolia**: [`0xb07035b03dFfdbcE9A51806fE103103bC6e7350c`](https://celoscan.io/address/0xb07035b03dFfdbcE9A51806fE103103bC6e7350c)
 
-### 5. Score Submission
-- After game ends, commit your score on-chain
-- Reveal score within 3 minutes
-- Smart contract determines winner and distributes payout
+### Key Functions
 
-## 🎲 Game Rules
+| Function | Description |
+|----------|-------------|
+| `createMatch(gameType, stake)` | Create match with cUSD stake |
+| `joinMatch(matchId)` | Join existing match |
+| `commitScore(matchId, scoreHash)` | Submit score hash (commit phase) |
+| `revealScore(matchId, score, salt)` | Reveal actual score |
+| `claimTimeout(matchId)` | Claim win if opponent abandons |
 
-### Chess ♟️
-- Standard chess rules
-- Checkmate wins, stalemate draws
-- Score: Winner gets 100 points
+### Security Features
 
-### WHOT 🃏
-- Nigerian card game
-- Match shape or number
-- Special cards: Pick 2, Pick 3, Hold On, Suspension, WHOT
-- First to empty hand wins
+- ✅ **Commit-Reveal Pattern** - Prevents score manipulation
+- ✅ **Timeout Protection** - 5min commit, 3min reveal windows
+- ✅ **ReentrancyGuard** - Prevents reentrancy attacks
+- ✅ **Platform Fee** - 2% on winnings
 
-### Survey Clash 📊
-- Family Feud-style game
-- Guess top survey answers
-- 3 strikes and you're out
-- Higher total score wins
+---
 
-### Mancala 🪨
-- Kalah variant
-- Capture stones, get extra turns
-- Most stones in store wins
+## 🛠️ Tech Stack
 
-### Connect4 🔴🟡
-- Classic 4-in-a-row
-- Vertical, horizontal, or diagonal
-- First to connect 4 wins
+| Layer | Technologies |
+|-------|--------------|
+| **Frontend** | React 19, TypeScript, Vite, TailwindCSS, Three.js |
+| **Backend** | Node.js, Express, Socket.io, PostgreSQL |
+| **Blockchain** | Solidity, Hardhat, viem, Celo |
+| **Infrastructure** | Render (hosting), Neon (database) |
 
-### Wordle Duel 🔤
-- Competitive Wordle
-- 6 guesses to find 5-letter word
-- Faster solve = higher score
+---
 
-## 📊 Smart Contract Details
+## 📡 API Reference
 
-### MicroArena.sol
+### REST Endpoints
 
-**Key Functions:**
-- `createMatch(gameType, stake)`: Create new match with cUSD stake
-- `joinMatch(matchId)`: Join existing match
-- `commitScore(matchId, scoreHash)`: Submit score hash (commit phase)
-- `revealScore(matchId, score, salt)`: Reveal actual score (reveal phase)
-- `claimTimeout(matchId)`: Claim win if opponent doesn't commit/reveal
-
-**Security Features:**
-- Commit-reveal pattern prevents score manipulation
-- Timeout protection (5min commit, 3min reveal)
-- ReentrancyGuard on all state-changing functions
-- ERC20 (cUSD) integration for stakes
-
-**Platform Fee:** 2% on winnings
-
-## 🔧 Development
-
-### Run Tests
-
-```bash
-# Smart contract tests
-cd contracts && npm test
-
-# Backend tests
-cd server && npm test
 ```
-
-### Build for Production
-
-```bash
-# Frontend
-npm run build
-
-# Backend
-cd server && npm run build
-
-# Contracts
-cd contracts && npm run compile
+GET  /health                        # Health check
+GET  /api/matches/available/:type   # Available matches
+GET  /api/player/:address/stats     # Player statistics
+GET  /api/match/:matchId            # Match details
 ```
-
-### Verify Contract on CeloScan
-
-```bash
-cd contracts
-npx hardhat verify --network alfajores <CONTRACT_ADDRESS> <CUSD_ADDRESS>
-```
-
-## 📡 API Endpoints
-
-### REST API (Backend)
-
-- `GET /health` - Health check
-- `GET /api/matches/available/:gameType` - Get available matches
-- `GET /api/player/:address/stats` - Get player statistics
-- `GET /api/match/:matchId` - Get match details
 
 ### WebSocket Events
 
 **Client → Server:**
-- `auth:connect` - Authenticate with wallet address
-- `matchmaking:search` - Search for match
-- `matchmaking:cancel` - Cancel search
+- `auth:connect` - Authenticate with wallet
+- `matchmaking:search` - Find opponent
 - `game:move` - Send game move
-- `game:resign` - Resign from game
-- `game:chat` - Send chat message
+- `game:resign` - Forfeit match
 
 **Server → Client:**
-- `matchmaking:found` - Match found
-- `matchmaking:searching` - Still searching
-- `game:opponent_move` - Opponent made move
+- `matchmaking:found` - Match ready
+- `game:opponent_move` - Opponent's move
 - `game:complete` - Game finished
-- `game:resigned` - Opponent resigned
-
-## 🛠️ Tech Stack
-
-- **Frontend**: React 19, TypeScript, Vite, TailwindCSS
-- **Backend**: Node.js, Express, Socket.io, PostgreSQL
-- **Blockchain**: Solidity, Hardhat, viem, Celo
-- **Games**: chess.js, custom game engines
-
-## 🔐 Security Considerations
-
-- ✅ Commit-reveal pattern for score submission
-- ✅ Timeout protection against abandonment
-- ✅ ReentrancyGuard on contract functions
-- ✅ Input validation on all endpoints
-- ✅ Rate limiting on WebSocket events
-- ✅ SQL injection prevention with parameterized queries
-
-## 📝 License
-
-MIT
-
-## 🤝 Contributing
-
-Contributions welcome! Please open an issue or PR.
-
-## 🆘 Support
-
-- **Issues**: GitHub Issues
-- **Discord**: [Join our community]
-- **Docs**: [Full documentation]
-
-## 🎉 Acknowledgments
-
-- Celo Foundation for testnet support
-- OpenZeppelin for secure contract libraries
-- chess.js for chess engine
 
 ---
 
-**Built with ❤️ for the Celo ecosystem**
+## 🚢 Deployment
+
+### Live URLs
+
+| Service | URL |
+|---------|-----|
+| Frontend | https://microarena-frontend.onrender.com |
+| Backend | https://microarena-server.onrender.com |
+| Contract | [CeloScan](https://celoscan.io/address/0xb07035b03dFfdbcE9A51806fE103103bC6e7350c) |
+
+### Deploy Your Own
+
+The project includes a `render.yaml` blueprint for one-click deployment to Render:
+
+1. Fork this repository
+2. Connect to Render
+3. Create new Blueprint → Select repo
+4. Configure environment variables
+5. Deploy
+
+---
+
+## 🔐 Security
+
+- Commit-reveal pattern for tamper-proof scoring
+- Server-side move validation for all games
+- Rate limiting on WebSocket events
+- Parameterized SQL queries
+- ReentrancyGuard on contract functions
+
+---
+
+## 🤝 Contributing
+
+Contributions welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
+
+---
+
+## 📝 License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+---
+
+## 🙏 Acknowledgments
+
+- [Celo Foundation](https://celo.org) - Blockchain infrastructure
+- [OpenZeppelin](https://openzeppelin.com) - Secure contract libraries
+- [chess.js](https://github.com/jhlywa/chess.js) - Chess engine
+
+---
+
+<p align="center">
+  <strong>Built with ❤️ for the Celo ecosystem</strong>
+</p>
+
+<p align="center">
+  <a href="https://microarena-frontend.onrender.com">Play Now</a> •
+  <a href="https://github.com/Sketchyjo/MICRO-ARENA/issues">Report Bug</a> •
+  <a href="https://github.com/Sketchyjo/MICRO-ARENA/issues">Request Feature</a>
+</p>
