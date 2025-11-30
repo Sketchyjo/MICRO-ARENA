@@ -10,7 +10,7 @@ services:
     runtime: node
     plan: free
     rootDir: server
-    buildCommand: npm install --include=dev && npm run build
+    buildCommand: npm install --include=dev && npm run build && cp src/database/schema.sql dist/database/
     startCommand: npm start
     envVars:
       - key: NODE_ENV
