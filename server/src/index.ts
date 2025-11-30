@@ -13,7 +13,8 @@ import { monitoring, setupGracefulShutdown } from './utils/monitoring';
 import { MatchmakingService } from './services/matchmaking';
 import { GameStateManager } from './services/gameStateManager';
 
-dotenv.config({ path: '../.env.local' });
+dotenv.config(); // Load server/.env first
+dotenv.config({ path: '../.env.local' }); // Then root .env.local as fallback
 
 const matchmaking = new MatchmakingService();
 const gameStateManager = new GameStateManager();

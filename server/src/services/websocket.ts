@@ -306,7 +306,7 @@ export function initializeWebSocket(io: SocketIOServer) {
                         io.to(matchRoom).emit('game:complete', {
                             matchId,
                             scores: result.scores,
-                            winner: result.scores.player1 > result.scores.player2 ? 'player1' : 'player2'
+                            winner: result.scores?.player1 !== undefined && result.scores?.player2 !== undefined && result.scores.player1 > result.scores.player2 ? 'player1' : 'player2'
                         });
                         websocketLogger.info(`Game complete: ${matchId}`, { scores: result.scores });
                     }
