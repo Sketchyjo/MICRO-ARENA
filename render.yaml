@@ -31,7 +31,7 @@ services:
   - type: web
     name: microarena-frontend
     runtime: static
-    buildCommand: npm install && npm run build
+    buildCommand: npm install -g pnpm && pnpm install && pnpm run build
     staticPublishPath: dist
     envVars:
       - key: VITE_CONTRACT_ADDRESS
