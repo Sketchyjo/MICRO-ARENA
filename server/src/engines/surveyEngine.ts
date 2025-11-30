@@ -22,6 +22,24 @@ export class SurveyEngine {
                 { text: "Fish", points: 12 },
                 { text: "Bird", points: 8 }
             ]
+        },
+        {
+            question: "Name something people do on vacation",
+            answers: [
+                { text: "Relax", points: 40 },
+                { text: "Swim", points: 25 },
+                { text: "Sightsee", points: 20 },
+                { text: "Shop", points: 15 }
+            ]
+        },
+        {
+            question: "Name a fruit",
+            answers: [
+                { text: "Apple", points: 38 },
+                { text: "Banana", points: 30 },
+                { text: "Orange", points: 20 },
+                { text: "Grape", points: 12 }
+            ]
         }
     ];
 
@@ -35,10 +53,9 @@ export class SurveyEngine {
             player1Strikes: 0,
             player2Strikes: 0,
             currentPlayer: 1,
-            revealedAnswers: [],
-            gameState: 'active',
-            player1: null,
-            player2: null
+            revealedAnswers: [] as string[],
+            player1: null as string | null,
+            player2: null as string | null
         };
     }
 
@@ -46,10 +63,10 @@ export class SurveyEngine {
         const { guess } = move;
         
         // Validate player turn
-        const expectedPlayer = gameState.currentPlayer;
-        const actualPlayer = gameState.player1 === playerAddress ? 1 : 2;
+        const isPlayer1 = gameState.player1 === playerAddress;
+        const expectedPlayer1Turn = gameState.currentPlayer === 1;
         
-        if (expectedPlayer !== actualPlayer) {
+        if ((expectedPlayer1Turn && !isPlayer1) || (!expectedPlayer1Turn && isPlayer1)) {
             return { valid: false, error: 'Not your turn' };
         }
         
@@ -66,26 +83,30 @@ export class SurveyEngine {
 
     applyMove(gameState: any, move: any, playerAddress: string) {
         const { guess } = move;
-        const newState = { ...gameState };
+        const newState = JSON.parse(JSON.stringify(gameState));
+        const isPlayer1 = newState.player1 === playerAddress;
         
         const answer = newState.currentQuestion.answers.find(
-            (a: { text: string; points: number }) => a.text.toLowerCase().includes(guess.toLowerCase()) && 
-            !newState.revealedAnswers.includes(a.text)
+            (a: { text: string; points: number }) => 
+                a.text.toLowerCase().includes(guess.toLowerCase()) && 
+                !newState.revealedAnswers.includes(a.text)
         );
         
         if (answer) {
             newState.revealedAnswers.push(answer.text);
-            if (newState.currentPlayer === 1) {
+            if (isPlayer1) {
                 newState.player1Score += answer.points;
             } else {
                 newState.player2Score += answer.points;
             }
+            newState.lastGuess = { guess, correct: true, answer: answer.text, points: answer.points };
         } else {
-            if (newState.currentPlayer === 1) {
+            if (isPlayer1) {
                 newState.player1Strikes++;
             } else {
                 newState.player2Strikes++;
             }
+            newState.lastGuess = { guess, correct: false };
         }
         
         // Switch turns
@@ -95,7 +116,6 @@ export class SurveyEngine {
     }
 
     checkCompletion(gameState: any): { isComplete: boolean; scores?: any } {
-        // Game ends if all answers revealed or player gets 3 strikes
         const allAnswersRevealed = gameState.revealedAnswers.length === gameState.currentQuestion.answers.length;
         const player1Eliminated = gameState.player1Strikes >= 3;
         const player2Eliminated = gameState.player2Strikes >= 3;
@@ -115,11 +135,5 @@ export class SurveyEngine {
         }
         
         return { isComplete: false };
-    }
-
-    assignPlayers(gameState: any, player1: string, player2: string) {
-        gameState.player1 = player1;
-        gameState.player2 = player2;
-        return gameState;
     }
 }

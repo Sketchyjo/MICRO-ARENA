@@ -18,6 +18,11 @@ class WebSocketClient {
             console.log('🔌 Connecting to WebSocket:', this.serverUrl);
             console.log('🔌 Player address:', playerAddress);
 
+            // Timeout for connection + auth
+            const timeout = setTimeout(() => {
+                reject(new Error('Connection timeout - auth did not complete'));
+            }, 10000);
+
             this.socket = io(this.serverUrl, {
                 transports: ['websocket'],
                 reconnection: true,
@@ -33,15 +38,18 @@ class WebSocketClient {
                 // Authenticate
                 console.log('🔐 Authenticating with address:', playerAddress);
                 this.socket!.emit('auth:connect', { address: playerAddress });
-                resolve();
             });
 
             this.socket.on('auth:success', (data) => {
                 console.log('✅ Authenticated successfully:', data.address);
+                clearTimeout(timeout);
+                resolve(); // Resolve only after auth success
             });
 
             this.socket.on('auth:error', (data) => {
                 console.error('❌ Authentication error:', data.error);
+                clearTimeout(timeout);
+                reject(new Error(data.error));
             });
 
             this.socket.on('connect_error', (error) => {
@@ -50,6 +58,7 @@ class WebSocketClient {
                 this.reconnectAttempts++;
 
                 if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+                    clearTimeout(timeout);
                     reject(new Error('Failed to connect to server'));
                 }
             });

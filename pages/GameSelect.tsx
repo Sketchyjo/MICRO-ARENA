@@ -53,13 +53,6 @@ export default function GameSelect() {
       desc: 'Strategic Blitz. Connect 4 to win.',
       color: 'from-blue-600 to-cyan-500',
       icon: '🔴'
-    },
-    {
-      id: GameType.WORDLE,
-      title: 'Wordle Duel',
-      desc: 'Intellectual Race. Guess the word.',
-      color: 'from-green-500 to-lime-500',
-      icon: '🔤'
     }
   ];
 
@@ -92,7 +85,6 @@ export default function GameSelect() {
       if (selectedGame === GameType.SURVEY) navigate('/game/survey');
       if (selectedGame === GameType.MANCALA) navigate('/game/mancala');
       if (selectedGame === GameType.CONNECT4) navigate('/game/connect4');
-      if (selectedGame === GameType.WORDLE) navigate('/game/wordle');
 
       setIsFinding(false);
     }, 2500);
@@ -115,7 +107,6 @@ export default function GameSelect() {
     if (gameType === GameType.SURVEY) navigate('/game/survey', { state: { isSpectator: true } });
     if (gameType === GameType.MANCALA) navigate('/game/mancala', { state: { isSpectator: true } });
     if (gameType === GameType.CONNECT4) navigate('/game/connect4', { state: { isSpectator: true } });
-    if (gameType === GameType.WORDLE) navigate('/game/wordle', { state: { isSpectator: true } });
   };
 
   return (

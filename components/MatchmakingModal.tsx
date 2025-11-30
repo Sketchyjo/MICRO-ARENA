@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { gameIntegration, GameState } from '../services/gameIntegration';
 import { contractService } from '../services/contractService';
-import { GameType } from '../types';
+import { GameType, MatchStatus } from '../types';
 
 
 interface MatchmakingModalProps {
@@ -78,8 +78,8 @@ const MatchmakingModal: React.FC<MatchmakingModalProps> = ({
 
     if (!isOpen) return null;
 
-    const isSearching = gameState?.status === 'SEARCHING';
-    const isCreatingMatch = gameState?.status === 'CREATING_MATCH';
+    const isSearching = gameState?.status === MatchStatus.SEARCHING;
+    const isCreatingMatch = gameState?.status === MatchStatus.CREATING_MATCH;
 
     return (
         <div className="modal-overlay" onClick={handleClose}>

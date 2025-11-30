@@ -2,24 +2,25 @@ import { Chess } from 'chess.js';
 
 export class ChessEngine {
     initialize() {
+        const chess = new Chess();
         return {
-            chess: new Chess(),
-            moves: [],
-            status: 'active',
-            players: { white: null, black: null },
-            currentTurn: 'white'
+            fen: chess.fen(),
+            moves: [] as string[],
+            currentPlayer: 1, // 1 = white (player1), 2 = black (player2)
+            player1: null as string | null,
+            player2: null as string | null
         };
     }
 
     validateMove(gameState: any, move: any, playerAddress: string): { valid: boolean; error?: string } {
         try {
-            const chess = new Chess(gameState.chess.fen());
+            const chess = new Chess(gameState.fen);
             
             // Check if it's player's turn
             const isWhiteTurn = chess.turn() === 'w';
-            const playerColor = gameState.players.white === playerAddress ? 'white' : 'black';
+            const isPlayer1 = gameState.player1 === playerAddress;
             
-            if ((isWhiteTurn && playerColor !== 'white') || (!isWhiteTurn && playerColor !== 'black')) {
+            if ((isWhiteTurn && !isPlayer1) || (!isWhiteTurn && isPlayer1)) {
                 return { valid: false, error: 'Not your turn' };
             }
             
@@ -31,20 +32,20 @@ export class ChessEngine {
     }
 
     applyMove(gameState: any, move: any, playerAddress: string) {
-        const chess = new Chess(gameState.chess.fen());
+        const chess = new Chess(gameState.fen);
         const moveResult = chess.move(move);
         
         return {
-            chess: { fen: () => chess.fen(), history: () => chess.history() },
-            moves: [...gameState.moves, { move: moveResult, player: playerAddress, timestamp: Date.now() }],
-            status: chess.isGameOver() ? 'complete' : 'active',
-            players: gameState.players,
-            currentTurn: chess.turn() === 'w' ? 'white' : 'black'
+            ...gameState,
+            fen: chess.fen(),
+            moves: [...gameState.moves, moveResult?.san || ''],
+            currentPlayer: chess.turn() === 'w' ? 1 : 2,
+            lastMove: { from: move.from, to: move.to, promotion: move.promotion }
         };
     }
 
     checkCompletion(gameState: any): { isComplete: boolean; scores?: any } {
-        const chess = new Chess(gameState.chess.fen());
+        const chess = new Chess(gameState.fen);
         
         if (!chess.isGameOver()) {
             return { isComplete: false };
@@ -53,19 +54,14 @@ export class ChessEngine {
         let scores = { player1: 50, player2: 50 }; // Draw by default
         
         if (chess.isCheckmate()) {
+            // The player whose turn it is has been checkmated (they lost)
             if (chess.turn() === 'w') {
-                scores = { player1: 0, player2: 100 }; // Black wins
+                scores = { player1: 0, player2: 100 }; // White (player1) lost
             } else {
-                scores = { player1: 100, player2: 0 }; // White wins
+                scores = { player1: 100, player2: 0 }; // Black (player2) lost
             }
         }
 
         return { isComplete: true, scores };
-    }
-
-    assignPlayers(gameState: any, player1: string, player2: string) {
-        gameState.players.white = player1;
-        gameState.players.black = player2;
-        return gameState;
     }
 }

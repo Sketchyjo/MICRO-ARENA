@@ -72,21 +72,64 @@ export default function ChessGame() {
     // Visual Effects State
     const [boardShake, setBoardShake] = useState(false);
 
-    // Handle match found
+    // Handle match found - start game immediately
     useEffect(() => {
         if (gameState?.status === 'MATCHED' && !gameStarted) {
+            console.log('🎮 Chess match found, starting game');
             setShowMatchmaking(false);
             setGameStarted(true);
-            setStatus("Match found! Game starting...");
+            
+            // Small delay to ensure server state is received
+            setTimeout(() => {
+                initializeFromServer();
+            }, 100);
         }
     }, [gameState?.status, gameStarted]);
+
+    // Listen for game:start event from server
+    useEffect(() => {
+        if (!gameState?.matchId) return;
+
+        const handleGameStart = (data: any) => {
+            console.log('🎮 Chess game start event received:', data);
+            if (data.gameState) {
+                (window as any).__serverGameState = data.gameState;
+                (window as any).__isPlayer1 = gameState?.isPlayer1;
+                if (!gameStarted) {
+                    setGameStarted(true);
+                    setTimeout(() => initializeFromServer(), 100);
+                }
+            }
+        };
+
+        websocketClient.socket?.on('game:start', handleGameStart);
+        return () => { websocketClient.socket?.off('game:start', handleGameStart); };
+    }, [gameState?.matchId, gameStarted]);
+
+    // Initialize game from server state
+    const initializeFromServer = () => {
+        const serverState = (window as any).__serverGameState;
+        const isPlayer1 = (window as any).__isPlayer1 ?? gameState?.isPlayer1;
+
+        if (serverState?.fen) {
+            console.log('🎮 Using server chess state:', serverState);
+            const newGame = new Chess(serverState.fen);
+            setGame(newGame);
+            setFen(newGame.fen());
+            setStatus(isPlayer1 ? "Your Turn (White)" : "Opponent's Turn");
+            delete (window as any).__serverGameState;
+        } else {
+            console.log('🎮 No server state, using fresh game');
+            setStatus(gameState?.isPlayer1 ? "Your Turn (White)" : "Opponent's Turn");
+        }
+    };
 
     // Listen for opponent moves via WebSocket
     useEffect(() => {
         if (!gameState?.matchId) return;
 
         const handleOpponentMove = (data: any) => {
-            console.log('Received opponent chess move:', data);
+            console.log('📥 Received opponent chess move:', data);
             const { move } = data;
 
             if (move.from && move.to) {
@@ -109,12 +152,44 @@ export default function ChessGame() {
             }
         };
 
+        const handleStateUpdate = (data: any) => {
+            console.log('📥 Chess state update:', data);
+            if (data.gameState?.fen) {
+                const isPlayer1 = (window as any).__isPlayer1 ?? gameState?.isPlayer1;
+                const serverTurn = data.currentTurn === 'player1' ? (isPlayer1 ? 'local' : 'opponent') : (isPlayer1 ? 'opponent' : 'local');
+                
+                // Sync FEN if different
+                if (data.gameState.fen !== game.fen()) {
+                    console.log('🔄 Syncing chess FEN from server');
+                    const newGame = new Chess(data.gameState.fen);
+                    setGame(newGame);
+                    setFen(newGame.fen());
+                }
+                
+                setStatus(serverTurn === 'local' ? "Your Turn" : "Opponent's Turn");
+            }
+        };
+
+        const handleGameComplete = (data: any) => {
+            console.log('🏆 Chess game complete:', data);
+            const isPlayer1 = (window as any).__isPlayer1 ?? gameState?.isPlayer1;
+            const myScore = isPlayer1 ? data.scores?.player1 : data.scores?.player2;
+            const opponentScore = isPlayer1 ? data.scores?.player2 : data.scores?.player1;
+            
+            const winner = myScore > opponentScore ? 'local' : (myScore < opponentScore ? 'opponent' : 'draw');
+            handleGameOver(winner, 'Game Complete');
+        };
+
         websocketClient.onOpponentMove(handleOpponentMove);
+        websocketClient.socket?.on('game:state_update', handleStateUpdate);
+        websocketClient.socket?.on('game:complete', handleGameComplete);
 
         return () => {
             websocketClient.off('game:opponent_move');
+            websocketClient.socket?.off('game:state_update', handleStateUpdate);
+            websocketClient.socket?.off('game:complete', handleGameComplete);
         };
-    }, [gameState?.matchId, game]);
+    }, [gameState?.matchId, gameState?.isPlayer1, game]);
 
     // Update captured pieces whenever FEN changes
     useEffect(() => {
@@ -372,7 +447,8 @@ export default function ChessGame() {
 
     // Bot Trigger (Non-Spectator) - disabled in production mode
     useEffect(() => {
-        if (gameState?.status === 'ACTIVE') return; // Don't use bot in production mode
+        // Don't use bot in multiplayer mode
+        if (gameState?.matchId || gameState?.status === 'MATCHED' || gameState?.status === 'ACTIVE') return;
 
         if (!isSpectator && game.turn() === 'b' && !game.isGameOver() && !gameOverModal.isOpen) {
             setIsAiThinking(true);
@@ -381,13 +457,27 @@ export default function ChessGame() {
                 makeBestMove();
             }, 100);
         }
-    }, [fen, game, makeBestMove, isSpectator, gameOverModal.isOpen, gameState?.status]);
+    }, [fen, game, makeBestMove, isSpectator, gameOverModal.isOpen, gameState?.status, gameState?.matchId]);
 
     const onDrop = (sourceSquare: string, targetSquare: string) => {
         if (isSpectator || gameOverModal.isOpen) return false;
-        if (game.turn() !== 'w' || isAiThinking) {
-            audioService.playError();
-            return false;
+        
+        // In multiplayer mode, check if it's our turn based on color assignment
+        if (gameState?.matchId) {
+            const isPlayer1 = gameState?.isPlayer1;
+            const isWhiteTurn = game.turn() === 'w';
+            // Player 1 is always white, Player 2 is always black
+            if ((isWhiteTurn && !isPlayer1) || (!isWhiteTurn && isPlayer1)) {
+                audioService.playError();
+                setStatus("Not your turn!");
+                return false;
+            }
+        } else {
+            // Bot mode - player is always white
+            if (game.turn() !== 'w' || isAiThinking) {
+                audioService.playError();
+                return false;
+            }
         }
 
         const moves = game.moves({ verbose: true });
@@ -467,6 +557,21 @@ export default function ChessGame() {
 
     const getLegalMoves = (square: string) => {
         if (isSpectator || gameOverModal.isOpen) return [];
+        
+        // In multiplayer, only show moves for your pieces on your turn
+        if (gameState?.matchId) {
+            const isPlayer1 = gameState?.isPlayer1;
+            const isWhiteTurn = game.turn() === 'w';
+            if ((isWhiteTurn && !isPlayer1) || (!isWhiteTurn && isPlayer1)) {
+                return []; // Not your turn
+            }
+            const piece = game.get(square);
+            if (piece) {
+                const myColor = isPlayer1 ? 'w' : 'b';
+                if (piece.color !== myColor) return []; // Not your piece
+            }
+        }
+        
         const moves = game.moves({ square, verbose: true });
         const moveSquares = moves.map(m => m.to);
         const piece = game.get(square);
@@ -592,7 +697,7 @@ export default function ChessGame() {
                             fen={fen}
                             onMove={onDrop}
                             getLegalMoves={getLegalMoves}
-                            orientation="white"
+                            orientation={gameState?.isPlayer1 === false ? 'black' : 'white'}
                             checkSquare={checkSquare}
                         />
                     </div>

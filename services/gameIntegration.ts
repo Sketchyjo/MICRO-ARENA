@@ -55,7 +55,17 @@ class GameIntegrationService {
      * Initialize the service
      */
     async initialize(playerAddress: string): Promise<void> {
-        if (this.isInitialized) return;
+        // If already initialized with same address, skip
+        if (this.isInitialized && this.gameState.playerAddress === playerAddress) {
+            console.log('✅ Game integration already initialized for this address');
+            return;
+        }
+
+        // If wallet changed, reset and reinitialize
+        if (this.isInitialized && this.gameState.playerAddress !== playerAddress) {
+            console.log('🔄 Wallet changed, reinitializing...');
+            this.cleanup();
+        }
 
         this.gameState.playerAddress = playerAddress;
 
@@ -65,7 +75,7 @@ class GameIntegrationService {
             this.setupWebSocketListeners();
             this.setupContractListeners();
             this.isInitialized = true;
-            console.log('✅ Game integration service initialized');
+            console.log('✅ Game integration service initialized for:', playerAddress);
         } catch (error: any) {
             this.handleError(`Failed to initialize: ${error.message}`);
             throw error;
@@ -249,7 +259,13 @@ class GameIntegrationService {
         });
 
         websocketClient.onMatchSearching(async (data) => {
-            console.log('🔍 Searching for match... No opponents found yet.');
+            console.log('🔍 Received matchmaking:searching event:', data);
+            console.log('🔍 Current state:', {
+                matchId: this.gameState.matchId?.toString(),
+                gameType: this.gameState.gameType,
+                stake: this.gameState.stake,
+                status: this.gameState.status
+            });
 
             // If we're searching and don't have a blockchain match yet, we're the first player
             // Create the blockchain match now
@@ -262,6 +278,8 @@ class GameIntegrationService {
 
                 try {
                     console.log('📝 Creating blockchain match as first player...');
+                    console.log('📝 Game type:', this.gameState.gameType, '-> number:', this.gameTypeToNumber(this.gameState.gameType));
+                    console.log('📝 Stake:', this.gameState.stake);
                     this.updateState({ status: MatchStatus.CREATING_MATCH });
 
                     const { matchId, txHash } = await contractService.createMatch(

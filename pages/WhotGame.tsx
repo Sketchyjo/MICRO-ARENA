@@ -387,7 +387,7 @@ export default function WhotGame() {
             if (winner === 'local') {
                 audioService.playWin();
             } else {
-                audioService.playLose();
+                audioService.playLoss();
             }
             
             // Show score submission modal
