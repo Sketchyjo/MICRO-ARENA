@@ -1,0 +1,49 @@
+databases:
+  - name: microarena-db
+    databaseName: microarena
+    user: microarena
+    plan: free
+
+services:
+  - type: web
+    name: microarena-server
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: DATABASE_URL
+        fromDatabase:
+          name: microarena-db
+          property: connectionString
+      - key: FRONTEND_URL
+        sync: false
+      - key: CONTRACT_ADDRESS
+        value: 0xb07035b03dFfdbcE9A51806fE103103bC6e7350c
+      - key: CUSD_TOKEN_ADDRESS
+        value: 0xdE9e4C3ce781b4bA68120d6261cbad65ce0aB00b
+
+  - type: web
+    name: microarena-frontend
+    runtime: static
+    plan: free
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_CONTRACT_ADDRESS
+        value: 0xb07035b03dFfdbcE9A51806fE103103bC6e7350c
+      - key: VITE_CUSD_TOKEN_ADDRESS
+        value: 0xdE9e4C3ce781b4bA68120d6261cbad65ce0aB00b
+      - key: VITE_WEBSOCKET_URL
+        sync: false
+      - key: VITE_CELO_RPC_URL
+        value: https://forno.celo-sepolia.celo-testnet.org/
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
