@@ -128,46 +128,40 @@ export default function ChessGame() {
     useEffect(() => {
         if (!gameState?.matchId) return;
 
-        const handleOpponentMove = (data: any) => {
-            console.log('📥 Received opponent chess move:', data);
-            const { move } = data;
-
-            if (move.from && move.to) {
-                try {
-                    const result = game.move({ from: move.from, to: move.to, promotion: move.promotion || 'q' });
-                    if (result) {
-                        if (result.flags.includes('c') || result.flags.includes('e')) {
-                            setBoardShake(true);
-                            audioService.playCapture();
-                            setTimeout(() => setBoardShake(false), 500);
-                        } else {
-                            audioService.playChessMove();
-                        }
-                        setFen(game.fen());
-                        checkGameStatus();
-                    }
-                } catch (e) {
-                    console.error('Invalid opponent move:', e);
-                }
-            }
-        };
-
         const handleStateUpdate = (data: any) => {
             console.log('📥 Chess state update:', data);
-            if (data.gameState?.fen) {
-                const isPlayer1 = (window as any).__isPlayer1 ?? gameState?.isPlayer1;
-                const serverTurn = data.currentTurn === 'player1' ? (isPlayer1 ? 'local' : 'opponent') : (isPlayer1 ? 'opponent' : 'local');
+            if (!data.gameState?.fen) return;
+
+            const isPlayer1 = (window as any).__isPlayer1 ?? gameState?.isPlayer1;
+            const oldFen = game.fen();
+            const newFen = data.gameState.fen;
+            
+            // Only update if FEN changed
+            if (newFen !== oldFen) {
+                console.log('🔄 Syncing chess state from server');
+                const newGame = new Chess(newFen);
+                setGame(newGame);
+                setFen(newFen);
                 
-                // Sync FEN if different
-                if (data.gameState.fen !== game.fen()) {
-                    console.log('🔄 Syncing chess FEN from server');
-                    const newGame = new Chess(data.gameState.fen);
-                    setGame(newGame);
-                    setFen(newGame.fen());
+                // Play sound based on move type
+                const oldGame = new Chess(oldFen);
+                const oldPieces = oldGame.board().flat().filter(p => p).length;
+                const newPieces = newGame.board().flat().filter(p => p).length;
+                
+                if (newPieces < oldPieces) {
+                    setBoardShake(true);
+                    audioService.playCapture();
+                    setTimeout(() => setBoardShake(false), 500);
+                } else {
+                    audioService.playChessMove();
                 }
                 
-                setStatus(serverTurn === 'local' ? "Your Turn" : "Opponent's Turn");
+                checkGameStatus();
             }
+            
+            // Update turn status
+            const serverTurn = data.currentTurn === 'player1' ? (isPlayer1 ? 'local' : 'opponent') : (isPlayer1 ? 'opponent' : 'local');
+            setStatus(serverTurn === 'local' ? "Your Turn" : "Opponent's Turn");
         };
 
         const handleGameComplete = (data: any) => {
@@ -180,12 +174,10 @@ export default function ChessGame() {
             handleGameOver(winner, 'Game Complete');
         };
 
-        websocketClient.onOpponentMove(handleOpponentMove);
         websocketClient.socket?.on('game:state_update', handleStateUpdate);
         websocketClient.socket?.on('game:complete', handleGameComplete);
 
         return () => {
-            websocketClient.off('game:opponent_move');
             websocketClient.socket?.off('game:state_update', handleStateUpdate);
             websocketClient.socket?.off('game:complete', handleGameComplete);
         };

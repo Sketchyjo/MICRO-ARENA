@@ -105,38 +105,34 @@ export default function SurveyGame() {
     useEffect(() => {
         if (!gameState?.matchId) return;
 
-        const handleOpponentMove = (data: any) => {
-            console.log('📥 Survey opponent move:', data);
-            const { move } = data;
-            
-            if (move.guess) {
-                setNotification(`Opponent guessed: "${move.guess}"`);
-                setTimeout(() => setNotification(null), 2000);
-            }
-        };
-
         const handleStateUpdate = (data: any) => {
             console.log('📥 Survey state update:', data);
-            if (data.gameState) {
-                const isPlayer1 = (window as any).__isPlayer1 ?? gameState?.isPlayer1;
-                const state = data.gameState;
-                
-                setRevealedAnswers(state.revealedAnswers || []);
-                setMyScore(isPlayer1 ? state.player1Score : state.player2Score);
-                setOpponentScore(isPlayer1 ? state.player2Score : state.player1Score);
-                setMyStrikes(isPlayer1 ? state.player1Strikes : state.player2Strikes);
-                setOpponentStrikes(isPlayer1 ? state.player2Strikes : state.player1Strikes);
-                setIsMyTurn(state.currentPlayer === (isPlayer1 ? 1 : 2));
+            if (!data.gameState) return;
 
-                // Show feedback for last guess
-                if (state.lastGuess) {
-                    if (state.lastGuess.correct) {
-                        audioService.playBuzzCorrect();
-                        audioService.speak("Survey says... " + state.lastGuess.answer);
-                    } else {
-                        audioService.playBuzzWrong();
-                    }
+            const isPlayer1 = (window as any).__isPlayer1 ?? gameState?.isPlayer1;
+            const state = data.gameState;
+            
+            // Update all state from server
+            setRevealedAnswers(state.revealedAnswers || []);
+            setMyScore(isPlayer1 ? state.player1Score : state.player2Score);
+            setOpponentScore(isPlayer1 ? state.player2Score : state.player1Score);
+            setMyStrikes(isPlayer1 ? state.player1Strikes : state.player2Strikes);
+            setOpponentStrikes(isPlayer1 ? state.player2Strikes : state.player1Strikes);
+            setIsMyTurn(state.currentPlayer === (isPlayer1 ? 1 : 2));
+
+            // Show feedback for last guess
+            if (state.lastGuess) {
+                const wasMyGuess = state.currentPlayer !== (isPlayer1 ? 1 : 2); // Turn switched, so it was previous player
+                
+                if (state.lastGuess.correct) {
+                    audioService.playBuzzCorrect();
+                    audioService.speak("Survey says... " + state.lastGuess.answer);
+                    setNotification(`${wasMyGuess ? 'You' : 'Opponent'} revealed: "${state.lastGuess.answer}" (+${state.lastGuess.points})`);
+                } else {
+                    audioService.playBuzzWrong();
+                    setNotification(`${wasMyGuess ? 'You' : 'Opponent'} guessed: "${state.lastGuess.guess}" ❌`);
                 }
+                setTimeout(() => setNotification(null), 3000);
             }
         };
 
@@ -144,19 +140,17 @@ export default function SurveyGame() {
             console.log('🏆 Survey game complete:', data);
             const isPlayer1 = (window as any).__isPlayer1 ?? gameState?.isPlayer1;
             const score = isPlayer1 ? data.scores?.player1 : data.scores?.player2;
+            const opponentScore = isPlayer1 ? data.scores?.player2 : data.scores?.player1;
             
             setFinalScore(score || myScore);
-            audioService.speak(score > (isPlayer1 ? data.scores?.player2 : data.scores?.player1) 
-                ? "You win!" : "Game over!");
+            audioService.speak(score > opponentScore ? "You win!" : "Game over!");
             setShowScoreSubmission(true);
         };
 
-        websocketClient.onOpponentMove(handleOpponentMove);
         websocketClient.socket?.on('game:state_update', handleStateUpdate);
         websocketClient.socket?.on('game:complete', handleGameComplete);
 
         return () => {
-            websocketClient.off('game:opponent_move');
             websocketClient.socket?.off('game:state_update', handleStateUpdate);
             websocketClient.socket?.off('game:complete', handleGameComplete);
         };
