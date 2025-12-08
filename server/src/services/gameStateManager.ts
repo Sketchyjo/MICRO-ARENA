@@ -105,21 +105,6 @@ export class GameStateManager {
             return { valid: false, error: 'Game already complete' };
         }
 
-        // Validate it's the correct player's turn
-        const isPlayer1 = gameState.player1 === playerAddress;
-        const isPlayer2 = gameState.player2 === playerAddress;
-        const isPlayer1Turn = gameState.currentTurn === 'player1';
-
-        if ((isPlayer1Turn && !isPlayer1) || (!isPlayer1Turn && !isPlayer2)) {
-            gameLogger.warn(`Wrong player attempted move: ${matchId}`, {
-                playerAddress,
-                currentTurn: gameState.currentTurn,
-                player1: gameState.player1,
-                player2: gameState.player2
-            });
-            return { valid: false, error: 'Not your turn' };
-        }
-
         const engine = this.engines.get(gameState.gameType);
         if (!engine) {
             return { valid: false, error: 'Game engine not found' };
@@ -129,7 +114,7 @@ export class GameStateManager {
         gameState.state.player1 = gameState.player1;
         gameState.state.player2 = gameState.player2;
 
-        // Validate move
+        // Validate move (engine handles turn validation)
         const validation = engine.validateMove(gameState.state, move, playerAddress);
         if (!validation.valid) {
             gameLogger.warn(`Invalid move attempt: ${matchId}`, { playerAddress, move, error: validation.error });

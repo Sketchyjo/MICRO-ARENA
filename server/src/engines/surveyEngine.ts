@@ -86,10 +86,14 @@ export class SurveyEngine {
         const newState = JSON.parse(JSON.stringify(gameState));
         const isPlayer1 = newState.player1 === playerAddress;
         
+        const normalizedGuess = guess.toLowerCase().trim();
         const answer = newState.currentQuestion.answers.find(
-            (a: { text: string; points: number }) => 
-                a.text.toLowerCase().includes(guess.toLowerCase()) && 
-                !newState.revealedAnswers.includes(a.text)
+            (a: { text: string; points: number }) => {
+                const normalizedAnswer = a.text.toLowerCase().trim();
+                return (normalizedAnswer === normalizedGuess || 
+                        normalizedAnswer.includes(normalizedGuess) && normalizedGuess.length >= 3) &&
+                       !newState.revealedAnswers.includes(a.text);
+            }
         );
         
         if (answer) {

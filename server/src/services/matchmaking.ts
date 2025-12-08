@@ -49,6 +49,9 @@ export class MatchmakingService {
             }
         }
 
+        // Remove player from queue if they're re-joining (prevents duplicate entries)
+        this.cancelSearch(playerAddress);
+
         // Get player stats for ELO-based matching
         let playerElo = 1200; // Default ELO
         try {
