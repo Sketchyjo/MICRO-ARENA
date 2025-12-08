@@ -1,6 +1,6 @@
 # MICRO-ARENA 🎮
 
-[![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://microarena-frontend.onrender.com)
+[![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://microarena-frontend-z91q.onrender.com)
 [![Backend](https://img.shields.io/badge/api-online-blue)](https://microarena-server.onrender.com)
 [![Celo](https://img.shields.io/badge/blockchain-Celo-yellow)](https://celo.org)
 
