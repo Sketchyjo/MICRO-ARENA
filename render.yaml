@@ -22,7 +22,7 @@ services:
           name: microarena-db
           property: connectionString
       - key: FRONTEND_URL
-        value: https://microarena-frontend.onrender.com
+        value: https://microarena-frontend-z91q.onrender.com
       - key: CONTRACT_ADDRESS
         value: 0xb07035b03dFfdbcE9A51806fE103103bC6e7350c
       - key: CUSD_TOKEN_ADDRESS
@@ -39,7 +39,7 @@ services:
       - key: VITE_CUSD_TOKEN_ADDRESS
         value: 0xdE9e4C3ce781b4bA68120d6261cbad65ce0aB00b
       - key: VITE_WEBSOCKET_URL
-        value: wss://microarena-server.onrender.com
+        value: wss://microarena-server-5zl0.onrender.com
       - key: VITE_CELO_RPC_URL
         value: https://forno.celo-sepolia.celo-testnet.org/
     routes:
