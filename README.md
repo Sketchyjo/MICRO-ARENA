@@ -6,7 +6,7 @@
 
 **Production-ready blockchain gaming platform for 1v1 skill-based duels with cUSD micro-stakes on Celo.**
 
-🎮 **[Play Now →](https://microarena-frontend.onrender.com)**
+🎮 **[Play Now →](https://microarena-frontend-z91q.onrender.com)**
 
 ---
 
