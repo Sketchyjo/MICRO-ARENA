@@ -18,7 +18,6 @@ import MancalaGame from './pages/MancalaGame';
 import Connect4Game from './pages/Connect4Game';
 import WordleGame from './pages/WordleGame';
 import Results from './pages/Results';
-import ContractTest from './pages/ContractTest';
 
 import { gameIntegration } from './services/gameIntegration';
 
@@ -127,7 +126,6 @@ const AppContent: React.FC = () => {
           <Route path="/game/connect4" element={<Layout><Connect4Game /></Layout>} />
           <Route path="/game/wordle" element={<Layout><WordleGame /></Layout>} />
           <Route path="/results" element={<Layout><Results /></Layout>} />
-          <Route path="/contract-test" element={<Layout><ContractTest /></Layout>} />
         </Routes>
       </HashRouter>
     </AppContext.Provider>
