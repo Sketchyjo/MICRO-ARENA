@@ -1,7 +1,7 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
 import { HashRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { ComposerKitProvider } from '@composer-kit/ui/core';
-import { celoSepolia } from 'viem/chains';
+import { celo } from 'viem/chains';
 import { http } from 'wagmi';
 import { injected } from 'wagmi/connectors';
 import { contractService } from './services/contractService';
@@ -18,6 +18,7 @@ import MancalaGame from './pages/MancalaGame';
 import Connect4Game from './pages/Connect4Game';
 import WordleGame from './pages/WordleGame';
 import Results from './pages/Results';
+import ContractTest from './pages/ContractTest';
 
 import { gameIntegration } from './services/gameIntegration';
 
@@ -126,6 +127,7 @@ const AppContent: React.FC = () => {
           <Route path="/game/connect4" element={<Layout><Connect4Game /></Layout>} />
           <Route path="/game/wordle" element={<Layout><WordleGame /></Layout>} />
           <Route path="/results" element={<Layout><Results /></Layout>} />
+          <Route path="/contract-test" element={<Layout><ContractTest /></Layout>} />
         </Routes>
       </HashRouter>
     </AppContext.Provider>
@@ -133,9 +135,9 @@ const AppContent: React.FC = () => {
 };
 
 const config = {
-  chains: [celoSepolia],
+  chains: [celo],
   transports: {
-    [celoSepolia.id]: http("https://celo-sepolia.g.alchemy.com/v2/zSVVVZsFAtdutTtjLmf12")
+    [celo.id]: http("https://forno.celo.org")
   },
   connectors: [injected()]
 } as const;
@@ -144,8 +146,8 @@ const config = {
 const App: React.FC = () => {
   return (
     <ComposerKitProvider
-      chain={celoSepolia}
-      rpcUrl="https://celo-sepolia.g.alchemy.com/v2/zSVVVZsFAtdutTtjLmf12"
+      chain={celo}
+      rpcUrl="https://forno.celo.org"
       colorMode="dark"
       config={config}
     >

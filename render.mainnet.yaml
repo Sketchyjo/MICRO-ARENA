@@ -1,14 +1,14 @@
 databases:
-  - name: microarena-db
+  - name: microarena-db-prod
     databaseName: microarena
     user: microarena
-    plan: free
+    plan: starter # Paid plan for production
 
 services:
   - type: web
-    name: microarena-server
+    name: microarena-server-prod
     runtime: node
-    plan: free
+    plan: starter
     rootDir: server
     buildCommand: npm install --include=dev && npm run build && cp src/database/schema.sql dist/database/
     startCommand: npm start
@@ -19,27 +19,27 @@ services:
         value: 3001
       - key: DATABASE_URL
         fromDatabase:
-          name: microarena-db
+          name: microarena-db-prod
           property: connectionString
       - key: FRONTEND_URL
-        value: https://microarena-frontend-z91q.onrender.com
+        sync: false # Set manually after frontend deploy
       - key: CONTRACT_ADDRESS
-        value: 0x717AB670bc9E418a6DDE0580777b558f4A16e7B9
+        sync: false # Set after mainnet contract deployment
       - key: CUSD_TOKEN_ADDRESS
         value: 0x765DE816845861e75A25fCA122bb6898B8B1282a
 
   - type: web
-    name: microarena-frontend
+    name: microarena-frontend-prod
     runtime: static
     buildCommand: npm install -g pnpm && pnpm install && pnpm run build
     staticPublishPath: dist
     envVars:
       - key: VITE_CONTRACT_ADDRESS
-        value: 0x717AB670bc9E418a6DDE0580777b558f4A16e7B9
+        sync: false # Set after mainnet contract deployment
       - key: VITE_CUSD_TOKEN_ADDRESS
         value: 0x765DE816845861e75A25fCA122bb6898B8B1282a
       - key: VITE_WEBSOCKET_URL
-        value: wss://microarena-server-5zl0.onrender.com
+        sync: false # Set after backend deploy
       - key: VITE_CELO_RPC_URL
         value: https://forno.celo.org
     routes:

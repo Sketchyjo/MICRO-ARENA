@@ -131,10 +131,10 @@ pnpm run dev
 
 Create `.env.local` in root:
 ```env
-VITE_CONTRACT_ADDRESS=0xb07035b03dFfdbcE9A51806fE103103bC6e7350c
-VITE_CUSD_TOKEN_ADDRESS=0xdE9e4C3ce781b4bA68120d6261cbad65ce0aB00b
+VITE_CONTRACT_ADDRESS=0x717AB670bc9E418a6DDE0580777b558f4A16e7B9
+VITE_CUSD_TOKEN_ADDRESS=0x765DE816845861e75A25fCA122bb6898B8B1282a
 VITE_WEBSOCKET_URL=ws://localhost:3001
-VITE_CELO_RPC_URL=https://forno.celo-sepolia.celo-testnet.org/
+VITE_CELO_RPC_URL=https://forno.celo.org
 ```
 
 Create `.env` in `server/`:
@@ -160,7 +160,7 @@ NODE_ENV=development
 
 ## 📊 Smart Contract
 
-**Deployed on Celo Sepolia**: [`0xb07035b03dFfdbcE9A51806fE103103bC6e7350c`](https://celoscan.io/address/0xb07035b03dFfdbcE9A51806fE103103bC6e7350c)
+**Deployed on Celo Mainnet**: [`0x717AB670bc9E418a6DDE0580777b558f4A16e7B9`](https://celoscan.io/address/0x717AB670bc9E418a6DDE0580777b558f4A16e7B9)
 
 ### Key Functions
 
@@ -226,7 +226,7 @@ GET  /api/match/:matchId            # Match details
 |---------|-----|
 | Frontend | https://microarena-frontend.onrender.com |
 | Backend | https://microarena-server.onrender.com |
-| Contract | [CeloScan](https://celoscan.io/address/0xb07035b03dFfdbcE9A51806fE103103bC6e7350c) |
+| Contract | [CeloScan](https://celoscan.io/address/0x717AB670bc9E418a6DDE0580777b558f4A16e7B9) |
 
 ### Deploy Your Own
 

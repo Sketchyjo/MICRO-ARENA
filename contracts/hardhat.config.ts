@@ -24,7 +24,7 @@ export default defineConfig({
           viaIR: true,
           optimizer: {
             enabled: true,
-            runs: 200,
+            runs: 1, // Minimize deployment cost
           },
         },
       },
@@ -48,9 +48,16 @@ export default defineConfig({
     celoSepolia: {
       type: "http",
       chainType: "l1",
-      url: "https://celo-sepolia.g.alchemy.com/v2/zSVVVZsFAtdutTtjLmf12",
+      url: configVariable("CELO_SEPOLIA_RPC_URL"),
       accounts: [configVariable("CELO_PRIVATE_KEY")],
       chainId: 11142220,
+    },
+    celoMainnet: {
+      type: "http",
+      chainType: "l1",
+      url: configVariable("CELO_MAINNET_RPC_URL"),
+      accounts: [configVariable("CELO_MAINNET_PRIVATE_KEY")],
+      chainId: 42220,
     },
   },
 });

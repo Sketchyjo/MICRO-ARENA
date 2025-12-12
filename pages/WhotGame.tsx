@@ -807,8 +807,19 @@ export default function WhotGame() {
         setFinalScore(score);
         setMessage(winner === 'local' ? "🎉 You Won!" : "😔 You Lost");
 
-        // Show score submission modal in production mode
+        // Notify server so both players get the modal
         if (gameState?.matchId) {
+            const isPlayer1 = (window as any).__isPlayer1 ?? gameState?.isPlayer1;
+            const wsMatchId = gameState.tempMatchId || gameState.matchId?.toString();
+            websocketClient.socket?.emit('game:local_complete', {
+                matchId: wsMatchId,
+                winner,
+                reason: 'Game Complete',
+                scores: {
+                    player1: isPlayer1 ? score : (winner === 'local' ? 0 : score),
+                    player2: isPlayer1 ? (winner === 'local' ? 0 : score) : score
+                }
+            });
             setShowScoreSubmission(true);
         } else {
             // Legacy mode - navigate to results

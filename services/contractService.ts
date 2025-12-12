@@ -12,7 +12,7 @@ import {
     decodeEventLog,
     toBytes
 } from 'viem';
-import { celoSepolia } from 'viem/chains';
+import { celo } from 'viem/chains';
 
 // Type declarations
 declare global {
@@ -26,8 +26,8 @@ declare global {
     }
 }
 
-// cUSD token address on Celo Sepolia testnet
-const CUSD_ADDRESS = '0xdE9e4C3ce781b4bA68120d6261cbad65ce0aB00b';
+// cUSD token address on Celo Mainnet
+const CUSD_ADDRESS = '0x765DE816845861e75A25fCA122bb6898B8B1282a';
 
 // ERC20 ABI (minimal for our needs)
 const ERC20_ABI = [
@@ -121,6 +121,8 @@ const MICRO_ARENA_ABI = [
                 { name: 'p2CommitHash', type: 'bytes32' },
                 { name: 'p1Score', type: 'uint256' },
                 { name: 'p2Score', type: 'uint256' },
+                { name: 'p1Revealed', type: 'bool' },
+                { name: 'p2Revealed', type: 'bool' },
                 { name: 'winner', type: 'address' },
                 { name: 'createdAt', type: 'uint256' },
                 { name: 'commitDeadline', type: 'uint256' },
@@ -147,8 +149,10 @@ const MICRO_ARENA_ABI = [
     {
         inputs: [
             { name: 'gameType', type: 'uint8' },
-            { name: 'minStake', type: 'uint256' },
-            { name: 'maxStake', type: 'uint256' }
+            { name: 'minStakeFilter', type: 'uint256' },
+            { name: 'maxStakeFilter', type: 'uint256' },
+            { name: 'offset', type: 'uint256' },
+            { name: 'limit', type: 'uint256' }
         ],
         name: 'getAvailableMatches',
         outputs: [{ name: '', type: 'uint256[]' }],
@@ -222,6 +226,35 @@ const MICRO_ARENA_ABI = [
         name: 'MatchCancelled',
         type: 'event',
     },
+    // New functions for mainnet
+    {
+        inputs: [{ name: 'matchId', type: 'uint256' }],
+        name: 'cancelExpiredMatch',
+        outputs: [],
+        stateMutability: 'nonpayable',
+        type: 'function',
+    },
+    {
+        inputs: [],
+        name: 'getMatchCount',
+        outputs: [{ name: '', type: 'uint256' }],
+        stateMutability: 'view',
+        type: 'function',
+    },
+    {
+        inputs: [],
+        name: 'minStake',
+        outputs: [{ name: '', type: 'uint256' }],
+        stateMutability: 'view',
+        type: 'function',
+    },
+    {
+        inputs: [],
+        name: 'paused',
+        outputs: [{ name: '', type: 'bool' }],
+        stateMutability: 'view',
+        type: 'function',
+    },
 ] as const;
 
 export interface Match {
@@ -235,6 +268,8 @@ export interface Match {
     p2CommitHash: string;
     p1Score: bigint;
     p2Score: bigint;
+    p1Revealed: boolean;
+    p2Revealed: boolean;
     winner: string;
     createdAt: bigint;
     commitDeadline: bigint;
@@ -257,11 +292,11 @@ class ContractService {
     private unwatch: (() => void) | null = null;
 
     constructor() {
-        this.contractAddress = import.meta.env.VITE_CONTRACT_ADDRESS || '0xeDA72a2C5Bfb7c6f88F27768FCeF697C20954E31';
+        this.contractAddress = import.meta.env.VITE_CONTRACT_ADDRESS || '0x717AB670bc9E418a6DDE0580777b558f4A16e7B9';
 
         this.publicClient = createPublicClient({
-            chain: celoSepolia,
-            transport: http(import.meta.env.VITE_CELO_RPC_URL || 'https://celo-sepolia.g.alchemy.com/v2/zSVVVZsFAtdutTtjLmf12'),
+            chain: celo,
+            transport: http(import.meta.env.VITE_CELO_RPC_URL || 'https://forno.celo.org'),
         });
     }
 
@@ -282,12 +317,12 @@ class ContractService {
             // Create wallet client
             this.walletClient = createWalletClient({
                 account: this.account,
-                chain: celoSepolia,
+                chain: celo,
                 transport: custom(window.ethereum),
             });
 
-            // Switch to Celo Sepolia if needed
-            await this.switchToCeloSepolia();
+            // Switch to Celo Mainnet if needed
+            await this.switchToCeloMainnet();
 
             // Start listening for events
             this.startEventListening();
@@ -301,13 +336,13 @@ class ContractService {
     }
 
     /**
-     * Switch to Celo Sepolia testnet
+     * Switch to Celo Mainnet
      */
-    private async switchToCeloSepolia(): Promise<void> {
+    private async switchToCeloMainnet(): Promise<void> {
         try {
             await window.ethereum!.request({
                 method: 'wallet_switchEthereumChain',
-                params: [{ chainId: '0xaa07cc' }], // 11142220 in hex
+                params: [{ chainId: '0xa4ec' }], // 42220 in hex
             });
         } catch (error: any) {
             // Chain not added, add it
@@ -315,11 +350,11 @@ class ContractService {
                 await window.ethereum!.request({
                     method: 'wallet_addEthereumChain',
                     params: [{
-                        chainId: '0xaa07cc',
-                        chainName: 'Celo Sepolia Testnet',
+                        chainId: '0xa4ec',
+                        chainName: 'Celo Mainnet',
                         nativeCurrency: { name: 'CELO', symbol: 'CELO', decimals: 18 },
-                        rpcUrls: ['https://celo-sepolia.g.alchemy.com/v2/zSVVVZsFAtdutTtjLmf12'],
-                        blockExplorerUrls: ['https://celo-sepolia.celoscan.io'],
+                        rpcUrls: ['https://forno.celo.org'],
+                        blockExplorerUrls: ['https://celoscan.io'],
                     }],
                 });
             } else {
@@ -452,7 +487,7 @@ class ContractService {
                     if (!this.walletClient) {
                         this.walletClient = createWalletClient({
                             account: this.account,
-                            chain: celoSepolia,
+                            chain: celo,
                             transport: custom(window.ethereum),
                         });
                     }
@@ -660,6 +695,12 @@ class ContractService {
             if (error.message?.includes('TransferFailed')) {
                 throw new Error('cUSD transfer failed. Check your balance and try again.');
             }
+            if (error.message?.includes('StakeTooLow')) {
+                throw new Error('Stake amount is below minimum. Please increase your stake.');
+            }
+            if (error.message?.includes('Pausable: paused') || error.message?.includes('EnforcedPause')) {
+                throw new Error('Contract is currently paused for maintenance.');
+            }
 
             throw new Error(`Match creation failed: ${error.message || 'Unknown error'}`);
         }
@@ -733,7 +774,6 @@ class ContractService {
         } catch (error: any) {
             console.error('Failed to join match:', error);
 
-            // Provide more helpful error messages
             if (error.message?.includes('insufficient funds')) {
                 throw new Error('Insufficient CELO for gas fees. Get testnet CELO from https://faucet.celo.org');
             }
@@ -742,6 +782,12 @@ class ContractService {
             }
             if (error.message?.includes('TransferFailed')) {
                 throw new Error('cUSD transfer failed. Check your balance and try again.');
+            }
+            if (error.message?.includes('CannotJoinOwnMatch')) {
+                throw new Error('You cannot join your own match.');
+            }
+            if (error.message?.includes('Pausable: paused') || error.message?.includes('EnforcedPause')) {
+                throw new Error('Contract is currently paused for maintenance.');
             }
             if (error.message?.includes('not available to join') || error.message?.includes('already has a second player')) {
                 throw error;
@@ -928,7 +974,7 @@ class ContractService {
     /**
      * Get available matches
      */
-    async getAvailableMatches(gameType: number, minStake: string = '0', maxStake: string = '1000000'): Promise<bigint[]> {
+    async getAvailableMatches(gameType: number, minStake: string = '0', maxStake: string = '1000000', offset: number = 0, limit: number = 50): Promise<bigint[]> {
         try {
             const minStakeWei = parseUnits(minStake, 18);
             const maxStakeWei = parseUnits(maxStake, 18);
@@ -937,7 +983,7 @@ class ContractService {
                 address: this.contractAddress as `0x${string}`,
                 abi: MICRO_ARENA_ABI,
                 functionName: 'getAvailableMatches',
-                args: [gameType, minStakeWei, maxStakeWei],
+                args: [gameType, minStakeWei, maxStakeWei, BigInt(offset), BigInt(limit)],
             });
 
             return matches as bigint[];
@@ -980,7 +1026,7 @@ class ContractService {
         if (typeof window.ethereum !== 'undefined') {
             this.walletClient = createWalletClient({
                 account: this.account,
-                chain: celoSepolia,
+                chain: celo,
                 transport: custom(window.ethereum),
             });
             this.startEventListening();
@@ -1021,14 +1067,92 @@ class ContractService {
      * Get block explorer URL for transaction
      */
     getExplorerUrl(txHash: string): string {
-        return `https://celo-sepolia.celoscan.io/tx/${txHash}`;
+        return `https://celoscan.io/tx/${txHash}`;
     }
 
     /**
      * Get block explorer URL for address
      */
     getAddressExplorerUrl(address: string): string {
-        return `https://celo-sepolia.celoscan.io/address/${address}`;
+        return `https://celoscan.io/address/${address}`;
+    }
+
+    /**
+     * Get minimum stake amount
+     */
+    async getMinStake(): Promise<string> {
+        try {
+            const minStake = await this.publicClient.readContract({
+                address: this.contractAddress as `0x${string}`,
+                abi: MICRO_ARENA_ABI,
+                functionName: 'minStake',
+            });
+            return formatUnits(minStake as bigint, 18);
+        } catch (error: any) {
+            console.error('Failed to get min stake:', error);
+            return '1'; // Default fallback
+        }
+    }
+
+    /**
+     * Check if contract is paused
+     */
+    async isPaused(): Promise<boolean> {
+        try {
+            const paused = await this.publicClient.readContract({
+                address: this.contractAddress as `0x${string}`,
+                abi: MICRO_ARENA_ABI,
+                functionName: 'paused',
+            });
+            return paused as boolean;
+        } catch (error: any) {
+            console.error('Failed to check paused status:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Get total match count
+     */
+    async getMatchCount(): Promise<bigint> {
+        try {
+            const count = await this.publicClient.readContract({
+                address: this.contractAddress as `0x${string}`,
+                abi: MICRO_ARENA_ABI,
+                functionName: 'getMatchCount',
+            });
+            return count as bigint;
+        } catch (error: any) {
+            console.error('Failed to get match count:', error);
+            return BigInt(0);
+        }
+    }
+
+    /**
+     * Cancel an expired match (anyone can call)
+     */
+    async cancelExpiredMatch(matchId: bigint): Promise<string> {
+        if (!this.walletClient || !this.account) throw new Error('Wallet not connected');
+
+        try {
+            const hash = await this.walletClient.writeContract({
+                address: this.contractAddress as `0x${string}`,
+                abi: MICRO_ARENA_ABI,
+                functionName: 'cancelExpiredMatch',
+                args: [matchId],
+                account: this.account,
+            });
+
+            console.log('✅ Cancel expired match transaction:', hash);
+            await this.publicClient.waitForTransactionReceipt({ hash });
+            return hash;
+        } catch (error: any) {
+            console.error('Failed to cancel expired match:', error);
+            if (error.message?.includes('MatchNotExpired')) {
+                throw new Error('Match has not expired yet (24 hours must pass).');
+            }
+            throw new Error(`Cancel expired match failed: ${error.message || 'Unknown error'}`);
+        }
     }
 }
 

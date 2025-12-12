@@ -511,6 +511,19 @@ class GameIntegrationService {
             throw new Error('No active match');
         }
 
+        // Check if already committed for this match
+        const existingCommit = this.loadCommitData(this.gameState.matchId.toString());
+        if (existingCommit) {
+            console.log('⚠️ Already committed for this match, using existing data');
+            this.updateState({
+                localScore: existingCommit.score,
+                salt: existingCommit.salt,
+                commitBlock: BigInt(existingCommit.commitBlock),
+                status: MatchStatus.WAITING_REVEAL,
+            });
+            return;
+        }
+
         try {
             this.updateState({ status: MatchStatus.COMMITTING });
 
@@ -526,6 +539,14 @@ class GameIntegrationService {
 
             console.log('✅ Score committed:', txHash);
 
+            // Save commit data to localStorage for recovery
+            this.saveCommitData(this.gameState.matchId.toString(), {
+                score,
+                salt,
+                commitBlock: commitBlock.toString(),
+                playerAddress: this.gameState.playerAddress,
+            });
+
             this.updateState({
                 localScore: score,
                 salt,
@@ -539,11 +560,67 @@ class GameIntegrationService {
     }
 
     /**
+     * Save commit data to localStorage
+     */
+    private saveCommitData(matchId: string, data: { score: number; salt: string; commitBlock: string; playerAddress: string }): void {
+        try {
+            const key = `microarena_commit_${matchId}_${data.playerAddress}`;
+            localStorage.setItem(key, JSON.stringify(data));
+            console.log('💾 Commit data saved to localStorage');
+        } catch (e) {
+            console.warn('Failed to save commit data to localStorage:', e);
+        }
+    }
+
+    /**
+     * Load commit data from localStorage
+     */
+    private loadCommitData(matchId: string): { score: number; salt: string; commitBlock: string } | null {
+        try {
+            const key = `microarena_commit_${matchId}_${this.gameState.playerAddress}`;
+            const data = localStorage.getItem(key);
+            if (data) {
+                console.log('📂 Loaded commit data from localStorage');
+                return JSON.parse(data);
+            }
+        } catch (e) {
+            console.warn('Failed to load commit data from localStorage:', e);
+        }
+        return null;
+    }
+
+    /**
+     * Clear commit data from localStorage
+     */
+    private clearCommitData(matchId: string): void {
+        try {
+            const key = `microarena_commit_${matchId}_${this.gameState.playerAddress}`;
+            localStorage.removeItem(key);
+        } catch (e) {
+            console.warn('Failed to clear commit data:', e);
+        }
+    }
+
+    /**
      * Reveal score
      */
     async revealScore(): Promise<void> {
-        if (!this.gameState.matchId || !this.gameState.salt || !this.gameState.commitBlock || this.gameState.localScore === null) {
-            throw new Error('Missing commit data');
+        if (!this.gameState.matchId) {
+            throw new Error('No active match');
+        }
+
+        // Try to load from localStorage if state is missing
+        let { salt, commitBlock, localScore } = this.gameState;
+        if (!salt || !commitBlock || localScore === null) {
+            const savedData = this.loadCommitData(this.gameState.matchId.toString());
+            if (savedData) {
+                salt = savedData.salt;
+                commitBlock = BigInt(savedData.commitBlock);
+                localScore = savedData.score;
+                console.log('📂 Recovered commit data from localStorage');
+            } else {
+                throw new Error('Missing commit data. Cannot reveal score.');
+            }
         }
 
         try {
@@ -551,12 +628,15 @@ class GameIntegrationService {
 
             const txHash = await contractService.revealScore(
                 this.gameState.matchId,
-                this.gameState.localScore,
-                this.gameState.salt,
-                this.gameState.commitBlock
+                localScore,
+                salt,
+                commitBlock
             );
 
             console.log('✅ Score revealed:', txHash);
+
+            // Clear saved commit data after successful reveal
+            this.clearCommitData(this.gameState.matchId.toString());
 
             this.updateState({ status: MatchStatus.WAITING_COMPLETION });
         } catch (error: any) {
@@ -666,9 +746,12 @@ class GameIntegrationService {
             [GameType.SURVEY]: 2,
             [GameType.MANCALA]: 3,
             [GameType.CONNECT4]: 4,
-            [GameType.WORDLE]: 5,
+            [GameType.TRIVIA]: 5,
+            [GameType.RPS]: 6,
+            [GameType.CHECKERS]: 7,
+            [GameType.PENALTY]: 8,
         };
-        return mapping[gameType];
+        return mapping[gameType] ?? 0;
     }
 
     /**

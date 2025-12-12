@@ -6,8 +6,10 @@
     "compile": "hardhat compile",
     "test": "hardhat test",
     "deploy:celo": "hardhat run scripts/deploy-celo.ts --build-profile production --network celoSepolia",
+    "deploy:mainnet": "hardhat ignition deploy ignition/modules/MicroArenaMainnet.ts --network celoMainnet",
     "deploy:ignition": "hardhat ignition deploy ignition/modules/MicroArena.ts --network celoSepolia",
-    "verify:celo": "hardhat verify --network celoSepolia"
+    "verify:celo": "hardhat verify --network celoSepolia",
+    "verify:mainnet": "hardhat run scripts/verify-mainnet.ts --network celoMainnet"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ignition": "^3.0.5",
@@ -20,6 +22,7 @@
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.0.0",
+    "@openzeppelin/contracts-upgradeable": "^5.4.0",
     "dotenv": "^16.0.0"
   }
 }

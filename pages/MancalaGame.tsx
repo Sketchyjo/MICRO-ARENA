@@ -4,6 +4,11 @@ import { useApp } from '../App';
 import { MatchStatus, GameType } from '../types';
 import RulesModal from '../components/RulesModal';
 import { audioService } from '../services/audioService';
+import { useGameFlow } from '../hooks/useGameFlow';
+import MatchmakingModal from '../components/MatchmakingModal';
+import GameHUD from '../components/GameHUD';
+import ScoreSubmissionModal from '../components/ScoreSubmissionModal';
+import { websocketClient } from '../services/websocketClient';
 
 // Mancala board: [0-5] player pits, [6] player store, [7-12] opponent pits, [13] opponent store
 const INITIAL_STONES = 4;
@@ -22,6 +27,13 @@ export default function MancalaGame() {
     const { setMatchState } = useApp();
     const isSpectator = location.state?.isSpectator || false;
 
+    // Production game flow
+    const { gameState, sendMove, resignGame: handleResignGame } = useGameFlow();
+    const [showMatchmaking, setShowMatchmaking] = useState(!isSpectator);
+    const [showScoreSubmission, setShowScoreSubmission] = useState(false);
+    const [finalScore, setFinalScore] = useState(0);
+    const [gameStarted, setGameStarted] = useState(isSpectator);
+
     // Game State
     const [pits, setPits] = useState<number[]>(Array(14).fill(INITIAL_STONES).map((v, i) => i === 6 || i === 13 ? 0 : v));
     const [currentPlayer, setCurrentPlayer] = useState<'local' | 'opponent'>('local');
@@ -38,6 +50,73 @@ export default function MancalaGame() {
     // Animation states
     const [captureEffect, setCaptureEffect] = useState<number | null>(null);
     const [lastMovePit, setLastMovePit] = useState<number | null>(null);
+
+    // WebSocket synchronization
+    useEffect(() => {
+        if (!gameState?.matchId) return;
+
+        const handleStateUpdate = (data: any) => {
+            console.log('📥 Mancala state update:', data);
+            if (!data.gameState?.board) return;
+
+            const isPlayer1 = (window as any).__isPlayer1 ?? gameState?.isPlayer1;
+            
+            // Sync board state from server
+            const serverBoard = data.gameState.board;
+            setPits(serverBoard);
+            
+            // Update turn
+            const serverTurn = data.gameState.currentPlayer === 1 
+                ? (isPlayer1 ? 'local' : 'opponent') 
+                : (isPlayer1 ? 'opponent' : 'local');
+            setCurrentPlayer(serverTurn);
+            setMessage(serverTurn === 'local' ? "Your Turn" : "Opponent's Turn");
+            setIsAnimating(false);
+            
+            audioService.playChessMove();
+        };
+
+        const handleGameComplete = (data: any) => {
+            console.log('🏆 Mancala game complete:', data);
+            const isPlayer1 = (window as any).__isPlayer1 ?? gameState?.isPlayer1;
+            const myScore = isPlayer1 ? data.scores?.player1 : data.scores?.player2;
+            const opponentScore = isPlayer1 ? data.scores?.player2 : data.scores?.player1;
+            
+            setFinalScore(myScore);
+            if (myScore > opponentScore) audioService.playWin();
+            else if (myScore < opponentScore) audioService.playLoss();
+            
+            setShowScoreSubmission(true);
+        };
+
+        websocketClient.socket?.on('game:state_update', handleStateUpdate);
+        websocketClient.socket?.on('game:complete', handleGameComplete);
+
+        return () => {
+            websocketClient.socket?.off('game:state_update', handleStateUpdate);
+            websocketClient.socket?.off('game:complete', handleGameComplete);
+        };
+    }, [gameState?.matchId, gameState?.isPlayer1]);
+
+    // Handle match found - initialize from server state
+    useEffect(() => {
+        if (gameState?.status === 'MATCHED' && !gameStarted) {
+            setShowMatchmaking(false);
+            setGameStarted(true);
+            
+            const serverState = (window as any).__serverGameState;
+            const isPlayer1 = (window as any).__isPlayer1;
+            
+            if (serverState?.board) {
+                setPits(serverState.board);
+                const turn = serverState.currentPlayer === 1 
+                    ? (isPlayer1 ? 'local' : 'opponent') 
+                    : (isPlayer1 ? 'opponent' : 'local');
+                setCurrentPlayer(turn);
+                setMessage(turn === 'local' ? "Your Turn" : "Opponent's Turn");
+            }
+        }
+    }, [gameState?.status, gameStarted]);
 
     // Check if game is over
     const checkGameOver = useCallback((currentPits: number[]) => {
@@ -67,12 +146,30 @@ export default function MancalaGame() {
             if (winner === 'local') audioService.playWin();
             else if (winner === 'opponent') audioService.playLoss();
 
-            setGameOverModal({ isOpen: true, winner, localScore, opponentScore });
             setPits(newPits);
+            setFinalScore(localScore);
+
+            // Production mode - notify server and show score submission
+            if (gameState?.matchId) {
+                const isPlayer1 = (window as any).__isPlayer1 ?? gameState?.isPlayer1;
+                const wsMatchId = gameState.tempMatchId || gameState.matchId?.toString();
+                websocketClient.socket?.emit('game:local_complete', {
+                    matchId: wsMatchId,
+                    winner,
+                    reason: 'Game Complete',
+                    scores: {
+                        player1: isPlayer1 ? localScore : opponentScore,
+                        player2: isPlayer1 ? opponentScore : localScore
+                    }
+                });
+                setShowScoreSubmission(true);
+            } else {
+                setGameOverModal({ isOpen: true, winner, localScore, opponentScore });
+            }
             return true;
         }
         return false;
-    }, []);
+    }, [gameState?.matchId, gameState?.isPlayer1, gameState?.tempMatchId]);
 
     // Make a move
     const makeMove = useCallback((pitIndex: number, currentPits: number[], player: 'local' | 'opponent') => {
@@ -345,7 +442,7 @@ export default function MancalaGame() {
 
     // Handle pit click
     const handlePitClick = (pitIndex: number) => {
-        if (isSpectator || gameOverModal.isOpen || isAnimating) return;
+        if (isSpectator || gameOverModal.isOpen || isAnimating || showScoreSubmission) return;
         if (currentPlayer !== 'local') {
             audioService.playError();
             return;
@@ -356,7 +453,17 @@ export default function MancalaGame() {
         }
 
         setIsAnimating(true);
-        makeMove(pitIndex, pits, 'local');
+        
+        // Production mode - send move via WebSocket
+        if (gameState?.matchId) {
+            const isPlayer1 = (window as any).__isPlayer1 ?? gameState?.isPlayer1;
+            // Convert local pit index to server pit index
+            const serverPit = isPlayer1 ? pitIndex : pitIndex; // Player 1 uses 0-5, Player 2 uses 7-12
+            sendMove({ pit: serverPit });
+        } else {
+            // Legacy local mode
+            makeMove(pitIndex, pits, 'local');
+        }
     };
 
     const restartGame = () => {
@@ -415,6 +522,34 @@ export default function MancalaGame() {
                     backgroundImage: 'radial-gradient(#333 1px, transparent 1px)',
                     backgroundSize: '20px 20px'
                 }}
+            />
+
+            {/* Matchmaking Modal */}
+            <MatchmakingModal
+                gameType={GameType.MANCALA}
+                isOpen={showMatchmaking}
+                onClose={() => navigate('/select')}
+                onMatchFound={() => {
+                    setShowMatchmaking(false);
+                    setGameStarted(true);
+                }}
+            />
+
+            {/* Game HUD */}
+            {gameState?.status === 'ACTIVE' && (
+                <GameHUD
+                    gameState={gameState}
+                    timeLeft={300}
+                    onResign={handleResignGame}
+                />
+            )}
+
+            {/* Score Submission Modal */}
+            <ScoreSubmissionModal
+                isOpen={showScoreSubmission}
+                score={finalScore}
+                onClose={() => setShowScoreSubmission(false)}
+                onComplete={() => navigate('/results')}
             />
 
             <RulesModal isOpen={showRules} onClose={() => setShowRules(false)} gameType={GameType.MANCALA} />

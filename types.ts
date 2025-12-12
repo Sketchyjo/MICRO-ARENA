@@ -1,11 +1,27 @@
 export enum GameType {
-  WHOT = 'WHOT',
   CHESS = 'CHESS',
+  WHOT = 'WHOT',
   SURVEY = 'SURVEY',
   MANCALA = 'MANCALA',
   CONNECT4 = 'CONNECT4',
-  WORDLE = 'WORDLE'
+  TRIVIA = 'TRIVIA',
+  RPS = 'RPS',
+  CHECKERS = 'CHECKERS',
+  PENALTY = 'PENALTY'
 }
+
+// Map GameType enum to contract indices
+export const GameTypeIndex: Record<GameType, number> = {
+  [GameType.CHESS]: 0,
+  [GameType.WHOT]: 1,
+  [GameType.SURVEY]: 2,
+  [GameType.MANCALA]: 3,
+  [GameType.CONNECT4]: 4,
+  [GameType.TRIVIA]: 5,
+  [GameType.RPS]: 6,
+  [GameType.CHECKERS]: 7,
+  [GameType.PENALTY]: 8,
+};
 
 export enum MatchStatus {
   IDLE = 'IDLE',

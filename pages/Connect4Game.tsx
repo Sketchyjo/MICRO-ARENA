@@ -1,7 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../App';
-import { MatchStatus } from '../types';
+import { MatchStatus, GameType } from '../types';
+import { useGameFlow } from '../hooks/useGameFlow';
+import MatchmakingModal from '../components/MatchmakingModal';
+import GameHUD from '../components/GameHUD';
+import ScoreSubmissionModal from '../components/ScoreSubmissionModal';
+import { websocketClient } from '../services/websocketClient';
+import { audioService } from '../services/audioService';
 
 const ROWS = 6;
 const COLS = 7;
@@ -11,7 +17,17 @@ const PLAYER_2 = 2; // Opponent
 
 export default function Connect4Game() {
     const navigate = useNavigate();
+    const location = useLocation();
     const { matchState, updateStatus, setMatchState } = useApp();
+    const isSpectator = location.state?.isSpectator || false;
+
+    // Production game flow
+    const { gameState, sendMove, resignGame: handleResignGame } = useGameFlow();
+    const [showMatchmaking, setShowMatchmaking] = useState(!isSpectator);
+    const [showScoreSubmission, setShowScoreSubmission] = useState(false);
+    const [finalScore, setFinalScore] = useState(0);
+    const [gameStarted, setGameStarted] = useState(isSpectator);
+
     const [board, setBoard] = useState<number[][]>(Array(ROWS).fill(null).map(() => Array(COLS).fill(EMPTY)));
     const [currentPlayer, setCurrentPlayer] = useState<number>(PLAYER_1);
     const [winner, setWinner] = useState<number | null>(null);
@@ -19,22 +35,82 @@ export default function Connect4Game() {
     const [isDropping, setIsDropping] = useState(false);
     const [animatingCol, setAnimatingCol] = useState<number | null>(null);
 
-    // Initialize game
+    // WebSocket synchronization
     useEffect(() => {
-        if (matchState.status === MatchStatus.IDLE) {
-            // If accessed directly without matchmaking, redirect or setup mock
-        }
-    }, []);
+        if (!gameState?.matchId) return;
 
-    // AI Opponent Logic (Smarter Heuristic)
+        const handleStateUpdate = (data: any) => {
+            console.log('📥 Connect4 state update:', data);
+            if (!data.gameState?.board) return;
+
+            const isPlayer1 = (window as any).__isPlayer1 ?? gameState?.isPlayer1;
+            
+            // Sync board state from server
+            setBoard(data.gameState.board);
+            
+            // Update turn
+            const serverTurn = data.gameState.currentPlayer;
+            const myPlayer = isPlayer1 ? PLAYER_1 : PLAYER_2;
+            setCurrentPlayer(serverTurn);
+            
+            setIsDropping(false);
+            audioService.playChessMove();
+            
+            // Check for winner
+            if (data.gameState.winner !== null) {
+                const winnerPlayer = data.gameState.winner;
+                setWinner(winnerPlayer);
+            }
+        };
+
+        const handleGameComplete = (data: any) => {
+            console.log('🏆 Connect4 game complete:', data);
+            const isPlayer1 = (window as any).__isPlayer1 ?? gameState?.isPlayer1;
+            const myScore = isPlayer1 ? data.scores?.player1 : data.scores?.player2;
+            const opponentScore = isPlayer1 ? data.scores?.player2 : data.scores?.player1;
+            
+            setFinalScore(myScore);
+            if (myScore > opponentScore) audioService.playWin();
+            else if (myScore < opponentScore) audioService.playLoss();
+            
+            setTimeout(() => setShowScoreSubmission(true), 2000);
+        };
+
+        websocketClient.socket?.on('game:state_update', handleStateUpdate);
+        websocketClient.socket?.on('game:complete', handleGameComplete);
+
+        return () => {
+            websocketClient.socket?.off('game:state_update', handleStateUpdate);
+            websocketClient.socket?.off('game:complete', handleGameComplete);
+        };
+    }, [gameState?.matchId, gameState?.isPlayer1]);
+
+    // Handle match found - initialize from server state
     useEffect(() => {
+        if (gameState?.status === 'MATCHED' && !gameStarted) {
+            setShowMatchmaking(false);
+            setGameStarted(true);
+            
+            const serverState = (window as any).__serverGameState;
+            const isPlayer1 = (window as any).__isPlayer1;
+            
+            if (serverState?.board) {
+                setBoard(serverState.board);
+                setCurrentPlayer(serverState.currentPlayer);
+            }
+        }
+    }, [gameState?.status, gameStarted]);
+
+    // AI Opponent Logic - only in legacy mode
+    useEffect(() => {
+        if (gameState?.matchId) return; // Skip AI in production mode
         if (currentPlayer === PLAYER_2 && !winner && !matchState.isSpectator) {
             const timer = setTimeout(() => {
                 makeAiMove();
-            }, 800); // Slightly faster response
+            }, 800);
             return () => clearTimeout(timer);
         }
-    }, [currentPlayer, winner]);
+    }, [currentPlayer, winner, gameState?.matchId]);
 
     const makeAiMove = () => {
         // 1. WIN: Check for winning move
@@ -206,14 +282,34 @@ export default function Connect4Game() {
 
     const handleDrop = (col: number) => {
         if (winner || isDropping || !canPlay(col)) return;
-        if (currentPlayer === PLAYER_2 && !matchState.isSpectator && matchState.players.opponent.username !== 'You') {
-            // Prevent player from moving for AI
+        
+        const isPlayer1 = (window as any).__isPlayer1 ?? gameState?.isPlayer1;
+        const myPlayer = isPlayer1 ? PLAYER_1 : PLAYER_2;
+        
+        // In production mode, only allow moves on your turn
+        if (gameState?.matchId && currentPlayer !== myPlayer) {
+            return;
+        }
+        
+        // Legacy mode - prevent player from moving for AI
+        if (!gameState?.matchId && currentPlayer === PLAYER_2 && !matchState.isSpectator) {
+            return;
         }
 
         setIsDropping(true);
         setAnimatingCol(col);
 
-        // Animate drop
+        // Production mode - send move via WebSocket
+        if (gameState?.matchId) {
+            sendMove({ column: col });
+            setTimeout(() => {
+                setAnimatingCol(null);
+                setIsDropping(false);
+            }, 400);
+            return;
+        }
+
+        // Legacy local mode - animate drop
         setTimeout(() => {
             const newBoard = [...board.map(row => [...row])];
             const row = dropPiece(newBoard, col, currentPlayer);
@@ -237,27 +333,78 @@ export default function Connect4Game() {
                 }
             }
             setIsDropping(false);
-        }, 400); // Wait for animation
+        }, 400);
     };
 
     const endGame = (winnerId: number) => {
-        setTimeout(() => {
-            updateStatus(MatchStatus.COMPLETED);
-            setMatchState(prev => ({
-                ...prev,
-                winner: winnerId === PLAYER_1 ? 'local' : winnerId === PLAYER_2 ? 'opponent' : 'draw',
-                players: {
-                    ...prev.players,
-                    local: { ...prev.players.local, score: winnerId === PLAYER_1 ? 1 : 0 },
-                    opponent: { ...prev.players.opponent, score: winnerId === PLAYER_2 ? 1 : 0 }
+        const winnerType = winnerId === PLAYER_1 ? 'local' : winnerId === PLAYER_2 ? 'opponent' : 'draw';
+        const score = winnerId === PLAYER_1 ? 100 : winnerId === 0 ? 50 : 0;
+        setFinalScore(score);
+
+        if (winnerId === PLAYER_1) audioService.playWin();
+        else if (winnerId === PLAYER_2) audioService.playLoss();
+
+        // Production mode - notify server and show score submission
+        if (gameState?.matchId) {
+            const isPlayer1 = (window as any).__isPlayer1 ?? gameState?.isPlayer1;
+            const wsMatchId = gameState.tempMatchId || gameState.matchId?.toString();
+            websocketClient.socket?.emit('game:local_complete', {
+                matchId: wsMatchId,
+                winner: winnerType,
+                reason: winnerId === 0 ? 'Draw' : 'Connect 4',
+                scores: {
+                    player1: isPlayer1 ? score : (winnerId === 0 ? 50 : 100 - score),
+                    player2: isPlayer1 ? (winnerId === 0 ? 50 : 100 - score) : score
                 }
-            }));
-            navigate('/results');
-        }, 3000);
+            });
+            setTimeout(() => setShowScoreSubmission(true), 2000);
+        } else {
+            setTimeout(() => {
+                updateStatus(MatchStatus.COMPLETED);
+                setMatchState(prev => ({
+                    ...prev,
+                    winner: winnerType,
+                    players: {
+                        ...prev.players,
+                        local: { ...prev.players.local, score: winnerId === PLAYER_1 ? 1 : 0 },
+                        opponent: { ...prev.players.opponent, score: winnerId === PLAYER_2 ? 1 : 0 }
+                    }
+                }));
+                navigate('/results');
+            }, 3000);
+        }
     };
 
     return (
         <div className="flex flex-col items-center justify-center min-h-[80vh] w-full max-w-2xl mx-auto p-4">
+            {/* Matchmaking Modal */}
+            <MatchmakingModal
+                gameType={GameType.CONNECT4}
+                isOpen={showMatchmaking}
+                onClose={() => navigate('/select')}
+                onMatchFound={() => {
+                    setShowMatchmaking(false);
+                    setGameStarted(true);
+                }}
+            />
+
+            {/* Game HUD */}
+            {gameState?.status === 'ACTIVE' && (
+                <GameHUD
+                    gameState={gameState}
+                    timeLeft={300}
+                    onResign={handleResignGame}
+                />
+            )}
+
+            {/* Score Submission Modal */}
+            <ScoreSubmissionModal
+                isOpen={showScoreSubmission}
+                score={finalScore}
+                onClose={() => setShowScoreSubmission(false)}
+                onComplete={() => navigate('/results')}
+            />
+
             {/* Header Info */}
             <div className="flex justify-between w-full mb-8 bg-slate-800/80 backdrop-blur-md p-4 rounded-2xl border border-slate-700 shadow-xl">
                 <div className={`flex items-center gap-3 px-4 py-2 rounded-xl transition-all duration-300 ${currentPlayer === PLAYER_1 ? 'bg-red-500/20 border border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.3)]' : 'opacity-60'}`}>

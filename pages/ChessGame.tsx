@@ -252,7 +252,22 @@ export default function ChessGame() {
         const score = calculateScore(winner);
         setFinalScore(score);
 
-        // Show score submission modal in production mode
+        // Notify server of game completion so both players get notified
+        if (gameState?.matchId && !isSpectator) {
+            const isPlayer1 = (window as any).__isPlayer1 ?? gameState?.isPlayer1;
+            const wsMatchId = gameState.tempMatchId || gameState.matchId?.toString();
+            websocketClient.socket?.emit('game:local_complete', {
+                matchId: wsMatchId,
+                winner,
+                reason,
+                scores: {
+                    player1: isPlayer1 ? score : (winner === 'draw' ? 50 : (winner === 'local' ? 0 : 100)),
+                    player2: isPlayer1 ? (winner === 'draw' ? 50 : (winner === 'local' ? 0 : 100)) : score
+                }
+            });
+        }
+
+        // Show score submission modal
         if (gameState?.matchId) {
             setShowScoreSubmission(true);
         } else {

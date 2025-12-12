@@ -333,6 +333,22 @@ export function initializeWebSocket(io: SocketIOServer) {
             });
         });
 
+        // Handle local game completion (checkmate, draw, etc.) - broadcast to both players
+        socket.on('game:local_complete', (data: { matchId: string; winner: string; reason: string; scores: { player1: number; player2: number } }) => {
+            const { matchId, winner, reason, scores } = data;
+            const matchRoom = `match:${matchId}`;
+            
+            websocketLogger.info(`Game locally complete: ${matchId}`, { winner, reason, scores });
+            
+            // Broadcast to both players in the match room
+            io.to(matchRoom).emit('game:complete', {
+                matchId,
+                winner,
+                reason,
+                scores
+            });
+        });
+
         socket.on('game:chat', (data: { matchId: string; message: string; playerAddress: string }) => {
             // Broadcast chat message to match participants
             socket.broadcast.emit('game:chat_message', {
